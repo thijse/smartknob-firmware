@@ -1,7 +1,8 @@
-# Smart Knob Firmware by @Seedlabs.it
-## Current Version: [![GitHub release (latest by date)](https://img.shields.io/github/v/release/SeedLabs-it/smartknob-firmware)](https://github.com/SeedLabs-it/smartknob-firmware/releases/latest)
+# Minimal Smart Knob Firmware with Python communication
+Based on Seedlabs.it harware
+## Derived from: [![GitHub release (latest by date)](https://img.shields.io/github/v/release/SeedLabs-it/smartknob-firmware)](https://github.com/SeedLabs-it/smartknob-firmware/releases/latest)
 
-## Supports: Smart Knob Dev Kit v0.1
+## Based on: Smart Knob Dev Kit v0.1
 
 ### Table of Contents
 1. [Introduction](#introduction)
