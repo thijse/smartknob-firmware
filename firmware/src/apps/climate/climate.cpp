@@ -380,6 +380,7 @@ EntityStateUpdate ClimateApp::updateStateFromKnob(PB_SmartKnobState state)
     return new_state;
 }
 
+#ifndef SERIAL_ONLY_MODE
 void ClimateApp::updateStateFromHASS(MQTTStateUpdate mqtt_state_update)
 {
     cJSON *new_state = cJSON_Parse(mqtt_state_update.state);
@@ -422,6 +423,7 @@ void ClimateApp::updateStateFromHASS(MQTTStateUpdate mqtt_state_update)
     updateTemperatureArc();
     updateModeIcon();
 }
+#endif
 
 int8_t ClimateApp::navigationNext()
 {

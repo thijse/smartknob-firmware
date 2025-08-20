@@ -6,6 +6,7 @@
 #include "proto/proto_gen/smartknob.pb.h"
 #include "semaphore_guard.h"
 
+#include "app_config.h"
 #include "configuration.h"
 
 Configuration::Configuration()
@@ -13,6 +14,7 @@ Configuration::Configuration()
     mutex_ = xSemaphoreCreateMutex();
     assert(mutex_ != NULL);
 
+#if !SERIAL_ONLY_MODE
     wifi_config = WiFiConfiguration();
     mqtt_config = MQTTConfiguration();
 
@@ -29,6 +31,7 @@ Configuration::Configuration()
 
     sprintf(wifi_config.knob_id, "%s", std::string("SKDK_" + mac_address.substr(mac_address.length() - 6)).c_str());
     sprintf(mqtt_config.knob_id, "%s", wifi_config.knob_id);
+#endif
 }
 
 Configuration::~Configuration()
@@ -38,7 +41,11 @@ Configuration::~Configuration()
 
 const char *Configuration::getKnobId()
 {
+#if !SERIAL_ONLY_MODE
     return wifi_config.knob_id;
+#else
+    return "SERIAL_KNOB";
+#endif
 }
 
 bool Configuration::loadFromDisk()
@@ -254,13 +261,16 @@ SETTINGS_Settings Configuration::getSettings()
 
 bool Configuration::resetToDefaults()
 {
+#if !SERIAL_ONLY_MODE
     EEPROM.put(WIFI_SET_EEPROM_POS, false);
     EEPROM.put(MQTT_SET_EEPROM_POS, false);
+#endif
     EEPROM.put(OS_MODE_EEPROM_POS, OSMode::ONBOARDING);
     EEPROM.commit();
     return true;
 }
 
+#if !SERIAL_ONLY_MODE
 bool Configuration::saveWiFiConfiguration(WiFiConfiguration wifi_config_to_save)
 {
     // TODO: persist in a file
@@ -323,6 +333,7 @@ bool Configuration::loadMQTTConfiguration()
 
     return is_mqtt_set;
 }
+#endif
 
 bool Configuration::saveOSConfigurationInMemory(OSConfiguration os_config)
 {
@@ -346,10 +357,17 @@ bool Configuration::loadOSConfiguration()
     // boot mode
     EEPROM.get(OS_MODE_EEPROM_POS, os_config.mode);
 
+#if !SERIAL_ONLY_MODE
     if (os_config.mode > OSMode::HASS)
     {
         os_config.mode = OSMode::ONBOARDING;
     }
+#else
+    if (os_config.mode > OSMode::DEMO)
+    {
+        os_config.mode = OSMode::ONBOARDING;
+    }
+#endif
 
     if (os_config.mode < 0)
     {
@@ -370,6 +388,10 @@ bool Configuration::saveFactoryStrainCalibration(float strain_scale)
 
 OSConfiguration *Configuration::getOSConfiguration()
 {
+#if SERIAL_ONLY_MODE
+    // Force demo mode when in serial-only mode
+    os_config.mode = OSMode::DEMO;
+#endif
     return &os_config;
 }
 

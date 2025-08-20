@@ -1,10 +1,10 @@
 #include <Arduino.h>
 
+#include "app_config.h"
 #include "configuration.h"
 #include "display_task.h"
 #include "root_task.h"
 #include "motor_foc/motor_task.h"
-#include "network/wifi_task.h"
 #include "sensors/sensors_task.h"
 #include "error_handling_flow/reset_task.h"
 #include "led_ring/led_ring_task.h"
@@ -52,29 +52,13 @@ static LedRingTask *led_ring_task_p = nullptr;
 
 static MotorTask motor_task(1, config);
 
-#if SK_WIFI
-static WifiTask wifi_task(1);
-static WifiTask *wifi_task_p = &wifi_task;
-#else
-static WifiTask *wifi_task_p = nullptr;
-
-#endif
-
-#if SK_MQTT
-static MqttTask mqtt_task(1);
-static MqttTask *mqtt_task_p = &mqtt_task;
-#else
-static MqttTask *mqtt_task_p = nullptr;
-
-#endif
-
 static SensorsTask sensors_task(1, &config);
 static SensorsTask *sensors_task_p = &sensors_task;
 
 static ResetTask reset_task(1, config);
 static ResetTask *reset_task_p = &reset_task;
 
-RootTask root_task(0, &config, motor_task, display_task_p, wifi_task_p, mqtt_task_p, led_ring_task_p, sensors_task_p, reset_task_p, adapter_p, serial_protocol_p, serial_protocol_protobuf_p);
+RootTask root_task(0, &config, motor_task, display_task_p, led_ring_task_p, sensors_task_p, reset_task_p, adapter_p, serial_protocol_p, serial_protocol_protobuf_p);
 
 void initTempSensor()
 {
@@ -130,17 +114,6 @@ void setup()
     root_task.loadConfiguration();
 
     motor_task.begin();
-
-#if SK_WIFI
-    wifi_task.addStateListener(root_task.getConnectivityStateQueue());
-    wifi_task.begin();
-#endif
-
-#if SK_MQTT
-    // IF WIFI CONNECTED CONNECT MQTT
-    mqtt_task.addAppSyncListener(root_task.getAppSyncQueue());
-    mqtt_task.begin();
-#endif
 
     sensors_task_p->addStateListener(root_task.getSensorsStateQueue());
     sensors_task_p->begin();

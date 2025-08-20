@@ -8,10 +8,11 @@
 #include "lvgl.h"
 #include "util.h"
 #include "notify/motor_notifier/motor_notifier.h"
-#include "notify/wifi_notifier/wifi_notifier.h"
 #include "notify/os_config_notifier/os_config_notifier.h"
 
+#ifndef SERIAL_ONLY_MODE
 #include "onboarding_flow/submenus/hass_flow.h"
+#endif
 
 enum OnboardingFlowPages
 {
@@ -47,6 +48,7 @@ public:
     }
 };
 
+#ifndef SERIAL_ONLY_MODE
 class HassPage : public BasePage
 {
 public:
@@ -70,6 +72,7 @@ public:
         lv_obj_set_style_text_color(label, LV_COLOR_MAKE(0x80, 0xFF, 0x50), LV_STATE_DEFAULT);
     }
 };
+#endif
 
 class DemoPage : public BasePage
 {
@@ -147,7 +150,9 @@ public:
     OnboardingPageManager(lv_obj_t *parent, SemaphoreHandle_t mutex) : PageManager<OnboardingFlowPages>(parent, mutex)
     {
         add(WELCOME_PAGE, new WelcomePage(parent));
+#ifndef SERIAL_ONLY_MODE
         add(HASS_PAGE, new HassPage(parent));
+#endif
         add(DEMO_PAGE, new DemoPage(parent));
         add(ABOUT_PAGE, new AboutPage(parent));
 
@@ -223,9 +228,6 @@ public:
     EntityStateUpdate update(AppState state);
     EntityStateUpdate updateStateFromKnob(PB_SmartKnobState state);
 
-    void handleEvent(WiFiEvent event);
-
-    void setWiFiNotifier(WiFiNotifier *wifi_notifier);
     void setOSConfigNotifier(OSConfigNotifier *os_config_notifier);
     void setMotorNotifier(MotorNotifier *motor_notifier);
     void triggerMotorConfigUpdate();
@@ -234,7 +236,9 @@ public:
 private:
     SemaphoreHandle_t mutex_;
 
+#ifndef SERIAL_ONLY_MODE
     HassOnboardingFlow *hass_flow;
+#endif
 
     ActiveSubMenu active_sub_menu = NONE;
 
@@ -244,7 +248,6 @@ private:
     PB_SmartKnobConfig root_level_motor_config;
     PB_SmartKnobConfig blocked_motor_config;
 
-    WiFiNotifier *wifi_notifier;
     OSConfigNotifier *os_config_notifier;
     MotorNotifier *motor_notifier;
 

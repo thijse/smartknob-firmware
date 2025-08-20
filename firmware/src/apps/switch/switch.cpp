@@ -201,6 +201,7 @@ EntityStateUpdate SwitchApp::updateStateFromKnob(PB_SmartKnobState state)
     return new_state;
 }
 
+#ifndef SERIAL_ONLY_MODE
 void SwitchApp::updateStateFromHASS(MQTTStateUpdate mqtt_state_update)
 {
     cJSON *new_state = cJSON_Parse(mqtt_state_update.state);
@@ -260,5 +261,6 @@ void SwitchApp::updateStateFromHASS(MQTTStateUpdate mqtt_state_update)
         }
     }
 }
+#endif
 
 void SwitchApp::updateStateFromSystem(AppState state) {}

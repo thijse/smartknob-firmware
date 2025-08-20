@@ -2,6 +2,8 @@
 
 #include "task.h"
 #include "app_config.h"
+#include "configuration.h"
+#include "events/events.h"
 #include <vector>
 #include <Adafruit_VL53L0X.h>
 

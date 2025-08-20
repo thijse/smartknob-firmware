@@ -1,0 +1,24 @@
+// Minimal nanopb.proto for Python protobuf generation
+// This file provides the nanopb options needed by the SmartKnob .proto files
+// but doesn't affect Python code generation (nanopb is for C/C++ only)
+
+syntax = "proto2";
+
+import "google/protobuf/descriptor.proto";
+
+enum IntSize {
+    IS_8 = 8;
+    IS_16 = 16; 
+    IS_32 = 32;
+    IS_64 = 64;
+}
+
+message NanoPBOptions {
+    optional int32 max_length = 1;
+    optional int32 max_count = 2;
+    optional IntSize int_size = 3;
+}
+
+extend google.protobuf.FieldOptions {
+    optional NanoPBOptions nanopb = 1010;
+}

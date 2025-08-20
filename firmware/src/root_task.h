@@ -12,8 +12,6 @@
 #include "proto/serial_protocol_protobuf.h"
 #include "task.h"
 #include "app_config.h"
-#include "network/wifi_task.h"
-#include "network/mqtt_task.h"
 #include "led_ring/led_ring_task.h"
 #include "sensors/sensors_task.h"
 #include "error_handling_flow/reset_task.h"
@@ -31,7 +29,7 @@ class RootTask : public Task<RootTask>
     friend class Task<RootTask>; // Allow base Task to invoke protected run()
 
 public:
-    RootTask(const uint8_t task_core, Configuration *configuration, MotorTask &motor_task, DisplayTask *display_task, WifiTask *wifi_task, MqttTask *mqtt_task, LedRingTask *led_ring_task, SensorsTask *sensors_task, ResetTask *reset_task, FreeRTOSAdapter *free_rtos_adapter, SerialProtocolPlaintext *serial_protocol_plaintext, SerialProtocolProtobuf *serial_protocol_protobuf);
+    RootTask(const uint8_t task_core, Configuration *configuration, MotorTask &motor_task, DisplayTask *display_task, LedRingTask *led_ring_task, SensorsTask *sensors_task, ResetTask *reset_task, FreeRTOSAdapter *free_rtos_adapter, SerialProtocolPlaintext *serial_protocol_plaintext, SerialProtocolProtobuf *serial_protocol_protobuf);
     virtual ~RootTask();
     void loadConfiguration();
 
@@ -49,8 +47,6 @@ protected:
 private:
     MotorTask &motor_task_;
     DisplayTask *display_task_;
-    WifiTask *wifi_task_;
-    MqttTask *mqtt_task_;
     LedRingTask *led_ring_task_;
     SensorsTask *sensors_task_;
     ResetTask *reset_task_;

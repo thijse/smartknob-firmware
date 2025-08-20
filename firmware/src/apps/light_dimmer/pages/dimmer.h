@@ -1,4 +1,5 @@
 #pragma once
+#include <logging.h>
 #include "./display/page_manager.h"
 #include "./util.h"
 

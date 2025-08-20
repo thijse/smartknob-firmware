@@ -1,4 +1,7 @@
 #pragma once
+
+#ifndef SERIAL_ONLY_MODE
+
 #include "apps.h"
 #include "../util.h"
 #include "../events/events.h"
@@ -16,3 +19,5 @@ public:
 private:
     lv_obj_t *waiting_for_hass = lv_obj_create(NULL);
 };
+
+#endif // SERIAL_ONLY_MODE

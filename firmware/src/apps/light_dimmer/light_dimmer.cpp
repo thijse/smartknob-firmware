@@ -222,6 +222,7 @@ EntityStateUpdate LightDimmerApp::updateStateFromKnob(PB_SmartKnobState state)
     return new_state;
 }
 
+#ifndef SERIAL_ONLY_MODE
 void LightDimmerApp::updateStateFromHASS(MQTTStateUpdate mqtt_state_update)
 {
     cJSON *new_state = cJSON_Parse(mqtt_state_update.state);
@@ -336,3 +337,4 @@ void LightDimmerApp::updateStateFromHASS(MQTTStateUpdate mqtt_state_update)
     page_mgr_->getPage(HUE_PAGE)->update(mutex_, hue_pos);
     page_mgr_->getPage(TEMP_PAGE)->update(mutex_, temp_pos);
 }
+#endif

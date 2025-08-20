@@ -6,7 +6,9 @@ class BlindsApp : public App
 public:
     BlindsApp(SemaphoreHandle_t mutex, char *app_id, char *friendly_name, char *entity_id);
     EntityStateUpdate updateStateFromKnob(PB_SmartKnobState state);
+#ifndef SERIAL_ONLY_MODE
     void updateStateFromHASS(MQTTStateUpdate mqtt_state_update);
+#endif
 
     int8_t navigationNext() override;
 

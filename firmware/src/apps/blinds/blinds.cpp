@@ -118,6 +118,7 @@ EntityStateUpdate BlindsApp::updateStateFromKnob(PB_SmartKnobState state)
     return new_state;
 }
 
+#ifndef SERIAL_ONLY_MODE
 void BlindsApp::updateStateFromHASS(MQTTStateUpdate mqtt_state_update)
 {
     cJSON *new_state = cJSON_Parse(mqtt_state_update.state);
@@ -156,6 +157,7 @@ void BlindsApp::updateStateFromHASS(MQTTStateUpdate mqtt_state_update)
         lv_obj_align(percentage_label, LV_ALIGN_CENTER, 0, 0);
     }
 }
+#endif
 
 int8_t BlindsApp::navigationNext()
 {

@@ -14,6 +14,9 @@
 #include "app_config.h"
 
 #include "./apps/demo_apps.h"
+#ifndef SERIAL_ONLY_MODE
+#include "./apps/hass_apps.h"
+#endif
 
 #include "onboarding_flow/onboarding_flow.h"
 #include "error_handling_flow/error_handling_flow.h"
@@ -35,10 +38,14 @@ public:
     void setBrightness(uint16_t brightness);
     OnboardingFlow *getOnboardingFlow();
     DemoApps *getDemoApps();
+#ifndef SERIAL_ONLY_MODE
     HassApps *getHassApps();
+#endif
 
     void enableOnboarding();
+#ifndef SERIAL_ONLY_MODE
     void enableHass();
+#endif
     void enableDemo();
 
     ErrorHandlingFlow *getErrorHandlingFlow();
@@ -51,7 +58,9 @@ protected:
 private:
     OnboardingFlow *onboarding_flow = nullptr;
     DemoApps *demo_apps = nullptr;
+#ifndef SERIAL_ONLY_MODE
     HassApps *hass_apps = nullptr;
+#endif
     ErrorHandlingFlow *error_handling_flow = nullptr;
 
     QueueHandle_t app_state_queue_;

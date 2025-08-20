@@ -1,4 +1,5 @@
 #include "root_task.h"
+#include "app_config.h"
 #include "semaphore_guard.h"
 #include "util.h"
 
@@ -17,8 +18,6 @@ RootTask::RootTask(
     Configuration *configuration,
     MotorTask &motor_task,
     DisplayTask *display_task,
-    WifiTask *wifi_task,
-    MqttTask *mqtt_task,
     LedRingTask *led_ring_task,
     SensorsTask *sensors_task,
     ResetTask *reset_task, FreeRTOSAdapter *free_rtos_adapter, SerialProtocolPlaintext *serial_protocol_plaintext, SerialProtocolProtobuf *serial_protocol_protobuf) : Task("RootTask", 1024 * 24, ESP_TASK_MAIN_PRIO, task_core),
@@ -26,8 +25,6 @@ RootTask::RootTask(
                                                                                                                                                                        configuration_(configuration),
                                                                                                                                                                        motor_task_(motor_task),
                                                                                                                                                                        display_task_(display_task),
-                                                                                                                                                                       wifi_task_(wifi_task),
-                                                                                                                                                                       mqtt_task_(mqtt_task),
                                                                                                                                                                        led_ring_task_(led_ring_task),
                                                                                                                                                                        sensors_task_(sensors_task),
                                                                                                                                                                        reset_task_(reset_task),
@@ -81,8 +78,13 @@ void RootTask::run()
     auto callbackGetKnobInfo = [this]()
     {
         PB_Knob knob = {};
+#if !SERIAL_ONLY_MODE
         strlcpy(knob.mac_address, WiFi.macAddress().c_str(), sizeof(knob.mac_address));
         strlcpy(knob.ip_address, WiFi.localIP().toString().c_str(), sizeof(knob.ip_address));
+#else
+        strlcpy(knob.mac_address, "00:00:00:00:00:00", sizeof(knob.mac_address));
+        strlcpy(knob.ip_address, "0.0.0.0", sizeof(knob.ip_address));
+#endif
         const PB_PersistentConfiguration config = configuration_->get();
         if (config.version != 0)
         {
@@ -119,10 +121,12 @@ void RootTask::run()
         this->configuration_->loadOSConfiguration();
         OSConfiguration *os_config = this->configuration_->getOSConfiguration();
 
+#if !SERIAL_ONLY_MODE
         if (os_config->mode == HASS && os_mode == ONBOARDING)
         { // Going from DEMO mode to HASS mode
             os_mode = HASS;
         }
+#endif
         
         os_config->mode = os_mode;
         LOGI("OS mode set to %d", os_config->mode);
@@ -138,10 +142,12 @@ void RootTask::run()
         case DEMO:
             display_task_->enableDemo();
             break;
+#if !SERIAL_ONLY_MODE
         case HASS:
             display_task_->enableHass();
             this->configuration_->saveOSConfiguration(*os_config);
             break;
+#endif
         default:
             break;
         } });
@@ -157,17 +163,20 @@ void RootTask::run()
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 
+#if !SERIAL_ONLY_MODE
     configuration_->setSharedEventsQueue(wifi_task_->getWiFiEventsQueue());
 
     sensors_task_->setSharedEventsQueue(wifi_task_->getWiFiEventsQueue());
 
     reset_task_->setSharedEventsQueue(wifi_task_->getWiFiEventsQueue());
+#endif
 
     display_task_->getOnboardingFlow()->setMotorNotifier(&motor_notifier);
     display_task_->getOnboardingFlow()->setOSConfigNotifier(&os_config_notifier_);
+#if !SERIAL_ONLY_MODE
 #if SK_WIFI
     wifi_task_->setConfig(configuration_->getWiFiConfiguration());
-    display_task_->getOnboardingFlow()->setWiFiNotifier(wifi_task_->getNotifier());
+    // WiFiNotifier removed in serial-only mode
 
     display_task_->getErrorHandlingFlow()->setSharedEventsQueue(wifi_task_->getWiFiEventsQueue());
 #if SK_MQTT
@@ -175,18 +184,26 @@ void RootTask::run()
     mqtt_task_->setSharedEventsQueue(wifi_task_->getWiFiEventsQueue());
 #endif
 #endif
+#endif
 
     display_task_->getErrorHandlingFlow()->setMotorNotifier(&motor_notifier);
     display_task_->getDemoApps()->setMotorNotifier(&motor_notifier);
     display_task_->getDemoApps()->setOSConfigNotifier(&os_config_notifier_);
+#ifndef SERIAL_ONLY_MODE
     display_task_->getHassApps()->setMotorNotifier(&motor_notifier);
     display_task_->getHassApps()->setOSConfigNotifier(&os_config_notifier_);
+#endif
 
     // TODO: move playhaptic to notifier? or other interface to just pass "possible" motor commands not entire object/class.
     reset_task_->setMotorTask(&motor_task_);
 
     configuration_->loadOSConfiguration();
 
+#if SERIAL_ONLY_MODE
+    // In serial-only mode, always go directly to demo mode
+    os_config_notifier_.setOSMode(DEMO);
+    display_task_->enableDemo();
+#else
     switch (configuration_->getOSConfiguration()->mode)
     {
     case ONBOARDING:
@@ -194,17 +211,17 @@ void RootTask::run()
         display_task_->enableOnboarding();
         break;
     case DEMO:
-        os_config_notifier_.setOSMode(ONBOARDING);
-        display_task_->enableOnboarding();
+        os_config_notifier_.setOSMode(DEMO);
+        display_task_->enableDemo();
         break;
     case HASS:
         // os_config_notifier_.setOSMode(HASS);
         display_task_->enableHass();
         break;
-
     default:
         break;
     }
+#endif
 
     motor_notifier.loopTick();
 
@@ -225,7 +242,7 @@ void RootTask::run()
             app_state.screen_state.has_been_engaged = true;
             motor_task_.runCalibration();
         }
-#if SK_WIFI
+#if !SERIAL_ONLY_MODE
         if (xQueueReceive(wifi_task_->getWiFiEventsQueue(), &wifi_event, 0) == pdTRUE)
         {
             switch (configuration_->getOSConfiguration()->mode)
@@ -401,14 +418,7 @@ void RootTask::run()
         if (xQueueReceive(app_sync_queue_, &apps_, 0) == pdTRUE)
         {
             LOGI("App sync requested from HASS!");
-#if SK_MQTT // Should this be here??
-            display_task_->getHassApps()->sync(mqtt_task_->getApps());
-
-            LOGV(LOG_LEVEL_DEBUG, "Giving 0.5s for Apps to initialize");
-            delay(500);
-            display_task_->getHassApps()->triggerMotorConfigUpdate();
-            mqtt_task_->unlock();
-#endif
+            // MQTT functionality removed for serial-only mode
         }
 
         if (xQueueReceive(knob_state_queue_, &latest_state_, 0) == pdTRUE)
@@ -445,9 +455,11 @@ void RootTask::run()
             case OSMode::DEMO:
                 entity_state_update_to_send = display_task_->getDemoApps()->update(app_state);
                 break;
+#if !SERIAL_ONLY_MODE
             case OSMode::HASS:
                 entity_state_update_to_send = display_task_->getHassApps()->update(app_state);
                 break;
+#endif
             default:
                 break;
             }
@@ -493,9 +505,7 @@ void RootTask::run()
             }
 #endif
 
-#if SK_MQTT
-            mqtt_task_->enqueueEntityStateToSend(entity_state_update_to_send);
-#endif
+            // MQTT functionality removed for serial-only mode
 
             if (entity_state_update_to_send.play_haptic)
             {
@@ -585,8 +595,10 @@ void RootTask::updateHardware(AppState *app_state)
                     case DEMO:
                         display_task_->getDemoApps()->handleNavigationEvent(event);
                         break;
+#if !SERIAL_ONLY_MODE
                     case HASS:
                         display_task_->getHassApps()->handleNavigationEvent(event);
+#endif
                     default:
                         break;
                     }
@@ -619,8 +631,10 @@ void RootTask::updateHardware(AppState *app_state)
                     case DEMO:
                         display_task_->getDemoApps()->handleNavigationEvent(event);
                         break;
+#if !SERIAL_ONLY_MODE
                     case HASS:
                         display_task_->getHassApps()->handleNavigationEvent(event);
+#endif
                     default:
                         break;
                     }
@@ -740,7 +754,7 @@ void RootTask::loadConfiguration()
 
             configuration_->loadOSConfiguration();
 
-#if SK_WIFI
+#if !SERIAL_ONLY_MODE
             if (configuration_->getOSConfiguration()->mode == HASS && configuration_->loadWiFiConfiguration())
             {
 
@@ -748,8 +762,7 @@ void RootTask::loadConfiguration()
                 // TODO: send event to wifi to start STA part with given credentials
                 wifi_task_->getNotifier()->requestSTA(wifi_config);
             }
-#endif
-#if SK_MQTT
+
             if (configuration_->getOSConfiguration()->mode == HASS && configuration_->loadMQTTConfiguration())
             {
                 // UNECCESARY

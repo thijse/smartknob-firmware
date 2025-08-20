@@ -1,8 +1,8 @@
 #pragma once
-#include "hass_apps.h"
+#include "apps.h"
 #include "notify/os_config_notifier/os_config_notifier.h"
 
-class DemoApps : public HassApps
+class DemoApps : public Apps
 {
 public:
     DemoApps(SemaphoreHandle_t mutex);

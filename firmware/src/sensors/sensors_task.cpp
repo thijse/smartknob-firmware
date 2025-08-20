@@ -42,6 +42,8 @@ void SensorsTask::run()
         LOGV(LOG_LEVEL_DEBUG, "Strain sensor not ready, waiting...");
         delay(100);
     }
+    // UPDATE: 2021-09-15: scale is set to larger range because of inbalance in the strain sensor.
+    strain.set_gain(64);
     if (configuration_->get().strain_scale == 0)
     {
         calibration_scale_ = 1.0f;
@@ -202,7 +204,7 @@ void SensorsTask::run()
                             discarded_strain_reading_count = 0;
                         }
 
-                        LOGW("Discarding strain reading, too big difference from last reading.");
+                        // LOGW("Discarding strain reading, too big difference from last reading.");
                         LOGV(LOG_LEVEL_WARNING, "Current raw strain reading: %f", strain_reading_raw);
                         LOGV(LOG_LEVEL_WARNING, "Last raw strain reading: %f", last_strain_reading_raw_);
                     }
@@ -419,11 +421,11 @@ void SensorsTask::factoryStrainCalibrationCallback(float calibration_weight)
         delay(200);
         float calibrated_weight = strain.get_units(10);
 
-        while (abs(calibrated_weight - calibration_weight) > 0.25)
+        while (abs(calibrated_weight - calibration_weight) > 20)
         {
-            if (abs(calibrated_weight - calibration_weight) > 10)
+            if (abs(calibrated_weight - calibration_weight) > 100)
             {
-                LOGE("Calibrated weight is more than 10g off from the calibration weight. Restart calibration by pressing 'Y' again.");
+                LOGE("Calibrated weight is more than 100g off from the calibration weight. Restart calibration by pressing 'Y' again.");
                 delay(2000);
                 strain.set_scale(1.0f);
                 calibration_scale_ = 1.0f;

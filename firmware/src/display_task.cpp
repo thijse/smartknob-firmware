@@ -49,6 +49,7 @@ DemoApps *DisplayTask::getDemoApps()
     return demo_apps;
 }
 
+#ifndef SERIAL_ONLY_MODE
 HassApps *DisplayTask::getHassApps()
 {
     while (hass_apps == nullptr)
@@ -57,6 +58,7 @@ HassApps *DisplayTask::getHassApps()
     }
     return hass_apps;
 }
+#endif
 
 ErrorHandlingFlow *DisplayTask::getErrorHandlingFlow()
 {
@@ -79,7 +81,9 @@ void DisplayTask::run()
 
     onboarding_flow = new OnboardingFlow(mutex_);
     demo_apps = new DemoApps(mutex_);
+#ifndef SERIAL_ONLY_MODE
     hass_apps = new HassApps(mutex_);
+#endif
     error_handling_flow = new ErrorHandlingFlow(mutex_);
     while (display_os_mode == UNSET)
     {
@@ -120,10 +124,13 @@ void DisplayTask::enableDemo()
     demo_apps->triggerMotorConfigUpdate();
 }
 
+#ifndef SERIAL_ONLY_MODE
 void DisplayTask::enableHass()
 {
     display_os_mode = HASS;
     hass_apps->render();
     hass_apps->triggerMotorConfigUpdate();
 }
+#endif
+
 #endif

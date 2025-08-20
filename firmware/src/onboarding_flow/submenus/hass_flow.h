@@ -4,7 +4,6 @@
 #include "display/page_manager.h"
 #include "notify/motor_notifier/motor_notifier.h"
 #include "notify/os_config_notifier/os_config_notifier.h"
-#include "notify/wifi_notifier/wifi_notifier.h"
 #include "semaphore_guard.h"
 
 enum HassOnboardingPages
@@ -184,8 +183,6 @@ public:
 
     EntityStateUpdate update(AppState state);
     EntityStateUpdate updateStateFromKnob(PB_SmartKnobState state);
-
-    void handleEvent(WiFiEvent event);
 
     void setOSConfigNotifier(OSConfigNotifier *os_config_notifier);
     void setMotorNotifier(MotorNotifier *motor_notifier);

@@ -1,5 +1,6 @@
 #pragma once
 #include "display/page_manager.h"
+#include "events/events.h"
 
 class ErrorPage : public BasePage
 {

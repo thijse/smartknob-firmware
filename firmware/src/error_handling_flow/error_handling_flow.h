@@ -1,11 +1,14 @@
 #pragma once
+#ifndef SERIAL_ONLY_MODE
 #include <WiFi.h>
+#endif
 
+#include "app_config.h"
 #include "util.h"
 #include "display/page_manager.h"
 #include "navigation/navigation.h"
 #include "notify/motor_notifier/motor_notifier.h"
-#include "notify/wifi_notifier/wifi_notifier.h"
+#include "events/events.h"
 
 #include "./pages/error.h"
 #include "./pages/reset.h"
@@ -41,7 +44,6 @@ public:
     void handleNavigationEvent(NavigationEvent event);
     void handleEvent(WiFiEvent event);
     void setMotorNotifier(MotorNotifier *motor_notifier);
-    void setWiFiNotifier(WiFiNotifier *wifi_notifier);
 
     void setSharedEventsQueue(QueueHandle_t shared_event_queue);
     void publishEvent(WiFiEvent event);
@@ -85,7 +87,6 @@ private:
     };
 
     MotorNotifier *motor_notifier;
-    WiFiNotifier *wifi_notifier;
 
     QueueHandle_t shared_events_queue;
 

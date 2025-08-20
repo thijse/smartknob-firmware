@@ -1,8 +1,24 @@
 #include "demo_apps.h"
 
-DemoApps::DemoApps(SemaphoreHandle_t mutex) : HassApps(mutex)
+DemoApps::DemoApps(SemaphoreHandle_t mutex) : Apps(mutex)
 {
-    HassApps::sync(cJSON_Parse(R"([{"app_slug": "climate","app_id": "climate.climate","friendly_name": "Climate","area": "Climate","menu_color": "#ffffff","entity_id": "climate"}, {"app_slug": "blinds","app_id": "blinds.blinds","friendly_name": "Blinds","area": "Blinds","menu_color": "#ffffff","entity_id": "blinds"},{"app_slug": "stopwatch","app_id": "light.ceiling1","friendly_name": "Ceiling1","area": "Kitchen1","menu_color": "#ffffff","entity_id": "stopwatch"},{"app_slug": "switch","app_id": "light.ceiling","friendly_name": "Ceiling","area": "Kitchen","menu_color": "#ffffff","entity_id": "ceiling_light_entity_id"},{"app_slug": "light_dimmer","app_id": "light.workbench","friendly_name": "Workbench","area": "Kitchen","menu_color": "#ffffff","entity_id": "workbench_light_entity_id"}])"));
+    // Initialize demo apps directly
+    clear();
+    uint16_t app_position = 0;
+
+    // Load demo apps
+    loadApp(app_position++, "climate", "climate.climate", "Climate", "climate");
+    loadApp(app_position++, "blinds", "blinds.blinds", "Blinds", "blinds");
+    loadApp(app_position++, "stopwatch", "light.ceiling1", "Ceiling1", "stopwatch");
+    loadApp(app_position++, "switch", "light.ceiling", "Ceiling", "ceiling_light_entity_id");
+    loadApp(app_position++, "light_dimmer", "light.workbench", "Workbench", "workbench_light_entity_id");
+
+    // Add settings app
+    SettingsApp *settings_app = new SettingsApp(screen_mutex_);
+    settings_app->setOSConfigNotifier(os_config_notifier_);
+    add(app_position, settings_app);
+
+    updateMenu();
     menu->setMenuName("Demo");
 }
 
@@ -13,8 +29,14 @@ void DemoApps::handleNavigationEvent(NavigationEvent event)
     case NavigationEvent::LONG:
         if (active_id == MENU)
         {
+#if !SERIAL_ONLY_MODE
             os_config_notifier->setOSMode(ONBOARDING);
             return;
+#else
+            // In serial-only mode, don't allow going back to onboarding
+            // Long press in menu does nothing
+            return;
+#endif
         }
         break;
     }

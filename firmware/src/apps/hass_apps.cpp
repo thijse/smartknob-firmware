@@ -1,3 +1,7 @@
+#include "app_config.h"
+
+#ifndef SERIAL_ONLY_MODE
+
 #include "hass_apps.h"
 
 HassApps::HassApps(SemaphoreHandle_t mutex) : Apps(mutex)
@@ -6,6 +10,7 @@ HassApps::HassApps(SemaphoreHandle_t mutex) : Apps(mutex)
     lv_label_set_text(label, "Waiting for Home Assistant");
     lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
 };
+
 void HassApps::sync(cJSON *json_apps)
 {
     clear();
@@ -39,6 +44,7 @@ void HassApps::sync(cJSON *json_apps)
     setMotorNotifier(motor_notifier);
     // cJSON_Delete(json_apps); //DELETING DELETES POINTERS NEEDED TO DISPLAY FRIENDLY NAME ON APPS HMMMM
 }
+
 void HassApps::handleEvent(WiFiEvent event)
 {
     SemaphoreGuard lock(app_mutex_);
@@ -76,6 +82,7 @@ void HassApps::handleEvent(WiFiEvent event)
         break;
     }
 }
+
 void HassApps::handleNavigationEvent(NavigationEvent event)
 {
     if (active_app == nullptr || apps.size() <= 1) // 1 is menu wich doesnt get removed when sync = 0 apps
@@ -93,3 +100,5 @@ void HassApps::render()
     }
     return Apps::render();
 }
+
+#endif // SERIAL_ONLY_MODE

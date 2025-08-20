@@ -39,7 +39,9 @@ public:
     LightDimmerApp(SemaphoreHandle_t mutex, AppData app_data);
 
     EntityStateUpdate updateStateFromKnob(PB_SmartKnobState state) override;
+#ifndef SERIAL_ONLY_MODE
     void updateStateFromHASS(MQTTStateUpdate mqtt_state_update) override;
+#endif
 
     int8_t navigationNext() override;
     int8_t navigationBack() override;

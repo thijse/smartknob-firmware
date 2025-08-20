@@ -39,8 +39,10 @@ OnboardingFlow::OnboardingFlow(SemaphoreHandle_t mutex) : mutex_(mutex)
 
     page_mgr = new OnboardingPageManager(main_screen, mutex);
 
+#ifndef SERIAL_ONLY_MODE
     hass_flow = new HassOnboardingFlow(mutex, [this]()
                                        { this->render(); this->triggerMotorConfigUpdate(); });
+#endif
 #ifdef RELEASE_VERSION
     sprintf(firmware_version, "%s", RELEASE_VERSION);
 #else
@@ -73,11 +75,13 @@ void OnboardingFlow::render()
 
 void OnboardingFlow::handleNavigationEvent(NavigationEvent event)
 {
+#ifndef SERIAL_ONLY_MODE
     if (active_sub_menu == HASS_SUB_MENU)
     {
         hass_flow->handleNavigationEvent(event);
         return;
     }
+#endif
     if (active_sub_menu == NONE)
     {
         switch (event)
@@ -89,9 +93,7 @@ void OnboardingFlow::handleNavigationEvent(NavigationEvent event)
             case ABOUT_PAGE:
                 break;
             case HASS_PAGE:
-                wifi_notifier->requestAP();
-                active_sub_menu = HASS_SUB_MENU;
-                hass_flow->render();
+                // HASS functionality removed in serial-only mode
                 break;
             case DEMO_PAGE:
                 os_config_notifier->setOSMode(OSMode::DEMO);
@@ -126,7 +128,9 @@ EntityStateUpdate OnboardingFlow::updateStateFromKnob(PB_SmartKnobState state)
 void OnboardingFlow::setMotorNotifier(MotorNotifier *motor_notifier)
 {
     this->motor_notifier = motor_notifier;
+#ifndef SERIAL_ONLY_MODE
     hass_flow->setMotorNotifier(motor_notifier); // TODO: BAD WAY? FIX
+#endif
 }
 
 void OnboardingFlow::triggerMotorConfigUpdate()
@@ -141,34 +145,10 @@ void OnboardingFlow::triggerMotorConfigUpdate()
     }
 }
 
-void OnboardingFlow::setWiFiNotifier(WiFiNotifier *wifi_notifier)
-{
-    this->wifi_notifier = wifi_notifier;
-}
-
 void OnboardingFlow::setOSConfigNotifier(OSConfigNotifier *os_config_notifier)
 {
     this->os_config_notifier = os_config_notifier;
+#ifndef SERIAL_ONLY_MODE
     hass_flow->setOSConfigNotifier(os_config_notifier);
-}
-
-void OnboardingFlow::handleEvent(WiFiEvent event)
-{
-    switch (event.type)
-    {
-    case SK_WIFI_AP_STARTED:
-    case SK_AP_CLIENT:
-    case SK_WEB_CLIENT:
-    case SK_WIFI_STA_TRY_NEW_CREDENTIALS:
-    case SK_WIFI_STA_TRY_NEW_CREDENTIALS_FAILED:
-    case SK_WEB_CLIENT_MQTT:
-    case SK_MQTT_TRY_NEW_CREDENTIALS:
-    case SK_MQTT_TRY_NEW_CREDENTIALS_FAILED:
-    case SK_MQTT_CONNECTED_NEW_CREDENTIALS:
-    case SK_MQTT_STATE_UPDATE:
-        hass_flow->handleEvent(event);
-        break;
-    default:
-        break;
-    }
+#endif
 }
