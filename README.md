@@ -8,13 +8,13 @@ This repository provides a simplified SmartKnob firmware focused on **serial com
 
 **Key Features:**
 - **Serial-only communication** - Removed WiFi/MQTT code for minimal codebase
-- **Clean Python library** - Protobuf-over-serial implementation with COM port auto-detection
+- **Python library** - Protobuf-over-serial implementation with COM port auto-detection
 - **Simplified firmware** - Removed Home Assistant integration for minimal codebase
 - **Direct app control** - Python backend can directly interact with SmartKnob apps (WIP)
 
 ## To-do
-The project is work in progress. For minimal functionality, the following things need to be resolved:
-- The Python client should be able to send packages that are recognized by the SmartKnob, so far it is only able to receive
+The project is a work in progress. For minimal functionality, the following things need to be resolved:
+- The Python client should be able to send packages that are recognized by the SmartKnob, so far, it is only able to receive
 - Beyond requesting the current button state, the client should be able to
   - Activate an application (template)
   - Populate the application (value ranges, detents, multiple choice values,  text, callbacks, etc)
@@ -81,9 +81,9 @@ The firmware has been reduced to only focus on apps:
 Protocol implementation with:
 
 - **Auto-detection**: Finds SmartKnob devices automatically via USB VID/PID
-- **Protocol stack**: COBS framing + CRC32 validation + Protobuf parsing
-- **Connection management**: High-level API for easy integration
-- **Tests**: Protocol validation and device discovery tests (WIP)
+- **Protocol stack**: COBS framing + CRC32 validation + Protobuf parsing - WIP
+- **Connection management**:  error recognition, auto-reconnect, etc.
+- **Tests**: Protocol validation and device discovery tests - WIP
 
 ```
 smartknob-connection/
@@ -98,12 +98,12 @@ smartknob-connection/
 
 ## Use Cases
 
-This codebase is ideal for:
+This codebase may, in the future, prove  useful for:
 
-- **IoT backends** controlling SmartKnob interfaces
 - **Prototyping** interactive applications with haptic feedback
 - **Educational projects** learning embedded-Python communication
 - **Custom applications** requiring precise knob control
+- **IoT backends** controlling SmartKnob interfaces
 - **DIY Home automation** But for this use-case, better go with the original Home Assistant integration
 
 ## Hardware Compatibility
