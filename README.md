@@ -4,7 +4,7 @@ A minimal, streamlined SmartKnob firmware designed for (more) easy Python backen
 
 ## Overview
 
-This repository provides a simplified SmartKnob firmware focused on **serial communication with Python backends**. Unlike the original WiFi/MQTT-based implementations, this codebase eliminates networking complexity and provides a clean, direct communication channel between SmartKnob hardware and Python applications.
+This repository provides a simplified SmartKnob firmware focused on **serial communication with Python backends**. Unlike the original WiFi/MQTT-based implementations, this codebase removes all wifi networking functionality and aims to only keep a simpler, direct communication channel between SmartKnob hardware and Python applications.
 
 **Key Features:**
 - **Serial-only communication** - Removed WiFi/MQTT code for minimal codebase
