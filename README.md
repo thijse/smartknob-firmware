@@ -1,4 +1,4 @@
-# SmartKnob Firmware with Python Backend Integration
+# SmartKnob Apps with Python Backend Integration
 
 A minimal, streamlined SmartKnob firmware designed for (more) easy Python backend communication and app development.
 
