@@ -16,7 +16,7 @@ This repository provides a simplified SmartKnob firmware focused on **serial com
 
 ## Recent Updates
 
-**Two-Way Communication Implemented** 
+**Two-Way Communication Implemented**
 - **Command Sending**: Python client can now send commands to SmartKnob
 - **State Requests**: Request current knob position and button state on demand
 - **Automatic Updates**: SmartKnob automatically broadcasts state changes 
@@ -79,7 +79,7 @@ with connect_smartknob() as knob:
 
 ### Firmware (Serial-Only Mode)
 
-The firmware has been reduced to only focus on apps:
+The firmware has been reduced to over-the-wire communication :
 
 - **Apps**: Climate, Blinds, Light Dimmer, Switch, Stopwatch
 - **Communication**: Serial protocol with protobuf messages
@@ -113,7 +113,7 @@ This codebase may, in the future, prove  useful for:
 - **Educational projects** learning embedded-Python communication
 - **Custom applications** requiring precise knob control
 - **IoT backends** controlling SmartKnob interfaces
-- **DIY Home automation** But for this use-case, better go with the original Home Assistant integration
+- **DIY Home automation** Although the seedlabs Home Assistant integration is a better choice
 
 ## Hardware Compatibility
 
