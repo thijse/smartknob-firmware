@@ -14,12 +14,12 @@ This repository provides a simplified SmartKnob firmware focused on **serial com
 
 ## Recent Updates
 
-**Two-Way Communication Implemented** (August 2025):
+**Two-Way Communication Implemented** 
 - **Command Sending**: Python client can now send commands to SmartKnob
 - **State Requests**: Request current knob position and button state on demand
-- **Automatic Updates**: SmartKnob automatically broadcasts state changes (10Hz max)
+- **Automatic Updates**: SmartKnob automatically broadcasts state changes 
 - **Simplified Firmware**: Streamlined codebase with reduced complexity
-- **Optimized Performance**: 67-83% reduction in serial traffic with smart rate limiting
+
 
 ## To-do
 The project is a work in progress. For minimal functionality, the following things need to be resolved:
@@ -82,7 +82,6 @@ The firmware has been reduced to only focus on apps:
 - **Apps**: Climate, Blinds, Light Dimmer, Switch, Stopwatch
 - **Communication**: Serial protocol with protobuf messages
 - **No networking**: WiFi/MQTT code removed for simplicity
-- **Conditional compilation**: `SERIAL_ONLY_MODE` flag controls features
 
 ### Python Library (`smartknob-connection/`)
 
