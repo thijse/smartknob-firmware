@@ -38,9 +38,7 @@ public:
     void render();
 
     virtual EntityStateUpdate updateStateFromKnob(PB_SmartKnobState state) { return EntityStateUpdate(); };
-#ifndef SERIAL_ONLY_MODE
-    virtual void updateStateFromHASS(MQTTStateUpdate mqtt_state_update) {};
-#endif
+
     virtual void updateStateFromSystem(AppState state) {};
 
     virtual void handleNavigation(NavigationEvent event) {

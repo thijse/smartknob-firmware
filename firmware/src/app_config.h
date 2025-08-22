@@ -4,17 +4,11 @@
 #include "cJSON.h"
 #include "proto/proto_gen/smartknob.pb.h"
 
-// Serial-only mode: disables all network functionality (WiFi, MQTT, HA)
-#define SERIAL_ONLY_MODE 1
-
 // Forward declarations to avoid circular dependencies
 enum OSMode
 {
     ONBOARDING = 0,
     DEMO,
-#if !SERIAL_ONLY_MODE
-    HASS,
-#endif
     UNSET
 };
 

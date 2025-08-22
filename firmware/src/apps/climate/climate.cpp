@@ -380,51 +380,6 @@ EntityStateUpdate ClimateApp::updateStateFromKnob(PB_SmartKnobState state)
     return new_state;
 }
 
-#ifndef SERIAL_ONLY_MODE
-void ClimateApp::updateStateFromHASS(MQTTStateUpdate mqtt_state_update)
-{
-    cJSON *new_state = cJSON_Parse(mqtt_state_update.state);
-    cJSON *mode = cJSON_GetObjectItem(new_state, "mode");
-    cJSON *target_temp = cJSON_GetObjectItem(new_state, "target_temp");
-    cJSON *current_temp = cJSON_GetObjectItem(new_state, "current_temp");
-
-    if (mode != NULL)
-    {
-        if (mode->valueint >= 0 && mode->valueint < ClimateAppMode::CLIMATE_MODE_COUNT)
-        {
-            this->mode = static_cast<ClimateAppMode>(mode->valueint);
-        }
-        else
-        {
-            LOGE("Invalid mode value: %d", mode->valueint);
-            return;
-        }
-    }
-
-    if (target_temp != NULL)
-    {
-        target_temperature = target_temp->valueint;
-        motor_config.position = target_temperature;
-        motor_config.position_nonce = target_temperature;
-    }
-
-    if (current_temp != NULL)
-    {
-        this->current_temperature = current_temp->valueint;
-    }
-
-    if (mode != NULL || target_temp != NULL || current_temp != NULL)
-    {
-        state_sent_from_hass = true;
-    }
-
-    cJSON_Delete(new_state);
-
-    updateTemperatureArc();
-    updateModeIcon();
-}
-#endif
-
 int8_t ClimateApp::navigationNext()
 {
     last_mode = mode;

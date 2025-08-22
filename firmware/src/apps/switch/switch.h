@@ -6,9 +6,6 @@ class SwitchApp : public App
 public:
     SwitchApp(SemaphoreHandle_t mutex, char *app_id, char *friendly_name, char *entity_id, bool is_light_switch);
     EntityStateUpdate updateStateFromKnob(PB_SmartKnobState state);
-#ifndef SERIAL_ONLY_MODE
-    void updateStateFromHASS(MQTTStateUpdate mqtt_state_update);
-#endif
     void updateStateFromSystem(AppState state);
 
 protected:

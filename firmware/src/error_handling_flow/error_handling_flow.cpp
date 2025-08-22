@@ -17,38 +17,6 @@ void ErrorHandlingFlow::handleEvent(WiFiEvent event)
 
     switch (event.type)
     {
-    case SK_MQTT_RETRY_LIMIT_REACHED:
-        if (!WiFi.isConnected())
-        {
-            sprintf(ip_data, "%s", "http://192.168.4.1/mqtt"); // always the same
-        }
-        else
-        {
-            // TODO: look into how to store and retrieve ip in a better way.
-            sprintf(ip_data, "http://%s/mqtt", WiFi.localIP().toString().c_str());
-        }
-        error_page->setQr(ip_data);
-    case SK_MQTT_CONNECTION_FAILED:
-        error_type = MQTT_ERROR;
-        send_event.type = SK_MQTT_ERROR;
-        publishEvent(send_event);
-        break;
-    case SK_WIFI_STA_RETRY_LIMIT_REACHED:
-        if (!WiFi.isConnected())
-        {
-            sprintf(ip_data, "%s", "http://192.168.4.1/"); // always the same
-        }
-        else
-        {
-            // TODO: look into how to store and retrieve ip in a better way.
-            sprintf(ip_data, "http://%s/", WiFi.localIP().toString().c_str());
-        }
-        error_page->setQr(ip_data);
-    case SK_WIFI_STA_CONNECTION_FAILED:
-        error_type = WIFI_ERROR;
-        send_event.type = SK_WIFI_ERROR;
-        publishEvent(send_event);
-        break;
     case SK_RESET_BUTTON_PRESSED:
         error_type = ErrorType::RESET;
         break;
@@ -77,23 +45,6 @@ void ErrorHandlingFlow::handleEvent(WiFiEvent event)
     case RESET:
         reset_page->show();
         page_manager->render(ErrorPages::RESET_PAGE);
-        break;
-    case MQTT_ERROR:
-    case WIFI_ERROR:
-        if (error_type == MQTT_ERROR)
-        {
-            LOGE("MQTT ERROR");
-            error_state.retry_count = event.body.error.body.mqtt_error.retry_count;
-        }
-        else if (error_type == WIFI_ERROR)
-        {
-            LOGE("WIFI ERROR");
-            error_state.retry_count = event.body.error.body.wifi_error.retry_count;
-        }
-
-        error_page->error_state = error_state;
-        error_page->show();
-        page_manager->render(ErrorPages::ERROR_PAGE);
         break;
     case NO_ERROR: // DO NOTHING
         break;

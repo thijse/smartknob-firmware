@@ -10,14 +10,9 @@
 #include "notify/motor_notifier/motor_notifier.h"
 #include "notify/os_config_notifier/os_config_notifier.h"
 
-#ifndef SERIAL_ONLY_MODE
-#include "onboarding_flow/submenus/hass_flow.h"
-#endif
-
 enum OnboardingFlowPages
 {
     WELCOME_PAGE = 0,
-    HASS_PAGE,
     // WIFI,
     DEMO_PAGE,
     ABOUT_PAGE,
@@ -47,32 +42,6 @@ public:
         lv_obj_set_style_text_color(label, LV_COLOR_MAKE(0x80, 0xFF, 0x50), LV_STATE_DEFAULT);
     }
 };
-
-#ifndef SERIAL_ONLY_MODE
-class HassPage : public BasePage
-{
-public:
-    HassPage(lv_obj_t *parent) : BasePage(parent)
-    {
-        lv_obj_t *img = lv_img_create(page);
-        LV_IMG_DECLARE(hass_logo_color);
-        lv_img_set_src(img, &hass_logo_color);
-        lv_obj_set_width(img, hass_logo_color.header.w);
-        lv_obj_set_height(img, hass_logo_color.header.h);
-        lv_obj_align(img, LV_ALIGN_CENTER, 0, -54);
-
-        lv_obj_t *label = lv_label_create(page);
-        lv_label_set_text(label, "HOME ASSISTANT\nINTEGRATION");
-        lv_obj_align(label, LV_ALIGN_CENTER, 0, 32);
-        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-
-        label = lv_label_create(page);
-        lv_label_set_text(label, "PRESS TO CONFIGURE");
-        lv_obj_align(label, LV_ALIGN_CENTER, 0, 74);
-        lv_obj_set_style_text_color(label, LV_COLOR_MAKE(0x80, 0xFF, 0x50), LV_STATE_DEFAULT);
-    }
-};
-#endif
 
 class DemoPage : public BasePage
 {
@@ -150,9 +119,6 @@ public:
     OnboardingPageManager(lv_obj_t *parent, SemaphoreHandle_t mutex) : PageManager<OnboardingFlowPages>(parent, mutex)
     {
         add(WELCOME_PAGE, new WelcomePage(parent));
-#ifndef SERIAL_ONLY_MODE
-        add(HASS_PAGE, new HassPage(parent));
-#endif
         add(DEMO_PAGE, new DemoPage(parent));
         add(ABOUT_PAGE, new AboutPage(parent));
 
@@ -211,7 +177,6 @@ private:
 enum ActiveSubMenu
 {
     NONE,
-    HASS_SUB_MENU,
     WIFI_SUB_MENU,
     DEMO_SUB_MENU,
     ACTIVE_SUB_MENU_COUNT
@@ -235,10 +200,6 @@ public:
 
 private:
     SemaphoreHandle_t mutex_;
-
-#ifndef SERIAL_ONLY_MODE
-    HassOnboardingFlow *hass_flow;
-#endif
 
     ActiveSubMenu active_sub_menu = NONE;
 

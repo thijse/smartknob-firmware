@@ -357,17 +357,10 @@ bool Configuration::loadOSConfiguration()
     // boot mode
     EEPROM.get(OS_MODE_EEPROM_POS, os_config.mode);
 
-#if !SERIAL_ONLY_MODE
-    if (os_config.mode > OSMode::HASS)
-    {
-        os_config.mode = OSMode::ONBOARDING;
-    }
-#else
     if (os_config.mode > OSMode::DEMO)
     {
         os_config.mode = OSMode::ONBOARDING;
     }
-#endif
 
     if (os_config.mode < 0)
     {

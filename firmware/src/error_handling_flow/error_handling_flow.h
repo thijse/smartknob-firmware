@@ -1,7 +1,4 @@
 #pragma once
-#ifndef SERIAL_ONLY_MODE
-#include <WiFi.h>
-#endif
 
 #include "app_config.h"
 #include "util.h"
