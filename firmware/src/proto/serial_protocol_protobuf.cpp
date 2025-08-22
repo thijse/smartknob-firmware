@@ -32,7 +32,7 @@ void SerialProtocolProtobuf::log(const LogMessage &log_msg)
 
 void SerialProtocolProtobuf::log_raw(const char *msg)
 {
-    LOGW("LOG_RAW NOT IMPLEMENTED FOR PROTOBUF PROTCOL");
+    LOGW("LOG_RAW NOT IMPLEMENTED FOR PROTOBUF PROTOCOL");
 }
 
 void SerialProtocolProtobuf::registerTagCallback(pb_size_t tag, TagCallback callback)
@@ -47,14 +47,27 @@ void SerialProtocolProtobuf::registerCommandCallback(PB_SmartKnobCommand command
 
 void SerialProtocolProtobuf::sendKnobInfo(PB_Knob knob)
 {
+    // LOGI("=== SEND_KNOB_INFO START ===");
     pb_tx_buffer_ = {};
     pb_tx_buffer_.which_payload = PB_FromSmartKnob_knob_tag;
     pb_tx_buffer_.payload.knob = knob;
+    // LOGI("Knob info prepared, MAC: %s, IP: %s", knob.mac_address, knob.ip_address);
+    // LOGI("Calling sendPBTxBuffer...");
+    sendPBTxBuffer();
+    // LOGI("=== SEND_KNOB_INFO END ===");
+}
+
+void SerialProtocolProtobuf::sendKnobState(PB_SmartKnobState state)
+{
+    pb_tx_buffer_ = {};
+    pb_tx_buffer_.which_payload = PB_FromSmartKnob_smartknob_state_tag;
+    pb_tx_buffer_.payload.smartknob_state = state;
     sendPBTxBuffer();
 }
 
 void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
 {
+    // LOGI(" packet received!");
     if (size <= 4)
     {
         // Too small, ignore bad packet
@@ -73,12 +86,20 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
         LOGE("Bad CRC (%u byte packet). Expected %08x but got %08x.", size - 4, expected_crc, provided_crc);
         return;
     }
+    else
+    {
+        // LOGI("CRC check passed");
+    }
 
     pb_istream_t stream = pb_istream_from_buffer(buffer, size - 4);
     if (!pb_decode(&stream, PB_ToSmartknob_fields, &pb_rx_buffer_))
     {
         LOGE("Decoding failed: %s", PB_GET_ERROR(&stream));
         return;
+    }
+    else
+    {
+        // LOGI("Decoding successful, protocol version: %u", pb_rx_buffer_.protocol_version);
     }
 
     if (pb_rx_buffer_.protocol_version != PROTOBUF_PROTOCOL_VERSION)
@@ -94,14 +115,22 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
         LOGD("Already handled nonce %u", pb_rx_buffer_.nonce);
         return;
     }
+    else
+    {
+        // LOGI("New nonce received: %u", pb_rx_buffer_.nonce);
+    }
     last_nonce_ = pb_rx_buffer_.nonce;
 
+    // todo: what is the difference between a tag callback and a button command?
+    // LOGI("Searching for tag callback");
     if (tag_callbacks_.find(pb_rx_buffer_.which_payload) != tag_callbacks_.end())
     {
+        // LOGI("tag callback found, creating task");
         TagHandlerParams *params = new TagHandlerParams{
             new std::function<void(const PB_ToSmartknob &)>(tag_callbacks_[pb_rx_buffer_.which_payload]),
             pb_rx_buffer_};
 
+        //  LOGI("Task creation starting...");
         xTaskCreate(
             [](void *param)
             {
@@ -118,22 +147,30 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
     }
     else if (pb_rx_buffer_.which_payload == PB_ToSmartknob_smartknob_command_tag)
     {
+        // LOGI("=== COMMAND RECEIVED: %d ===", pb_rx_buffer_.payload.smartknob_command);
         if (command_callbacks_.find(pb_rx_buffer_.payload.smartknob_command) != command_callbacks_.end())
         {
+            // LOGI("Command callback found, creating task...");
             auto handler = new std::function<void()>(command_callbacks_[pb_rx_buffer_.payload.smartknob_command]);
+            // LOGI("Task creation starting...");
             xTaskCreate(
                 [](void *param)
                 {
+                    // LOGI("=== COMMAND TASK STARTED ===");
                     auto handler = reinterpret_cast<std::function<void()> *>(param);
+                    // LOGI("About to execute command handler...");
                     (*handler)();
+                    // LOGI("Command handler execution completed");
                     delete handler;
+                    // LOGI("=== COMMAND TASK ENDING ===");
                     vTaskDelete(NULL);
                 },
                 "key_handler_task", 1024 * 8, handler, 5, NULL); // TODO stack size and priority?
+            // LOGI("Task creation completed");
         }
         else
         {
-            LOGE("Unknown command");
+            LOGE("Unknown command: %d", pb_rx_buffer_.payload.smartknob_command);
         }
     }
     else

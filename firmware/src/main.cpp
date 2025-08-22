@@ -78,6 +78,7 @@ void setup()
 #endif
 
     LOGI("Starting Seedlabs Smart Knob");
+    LOGI("=== DEBUG: FIRMWARE STARTING WITH DEBUG LOGGING ENABLED ===");
 
     initTempSensor();
 

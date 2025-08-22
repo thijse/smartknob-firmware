@@ -34,8 +34,9 @@ public:
     void registerCommandCallback(PB_SmartKnobCommand command, CommandCallback callback);
 
     void sendKnobInfo(PB_Knob knob);
-    void sendStrainCalibState(const uint8_t step);
-    void sendConfigState(const uint8_t step);
+    void sendKnobState(PB_SmartKnobState state);
+    // void sendStrainCalibState(const uint8_t step);
+    // void sendConfigState(const uint8_t step);
 
 protected:
     PB_FromSmartKnob pb_tx_buffer_;

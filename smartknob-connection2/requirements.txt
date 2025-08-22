@@ -4,6 +4,9 @@
 # Serial communication
 pyserial>=3.5
 
+# Async I/O framework
+anyio>=3.0.0
+
 # Protocol encoding
 cobs>=1.2.0
 
@@ -15,3 +18,4 @@ grpcio-tools>=1.50.0
 
 # Development and testing
 pytest>=7.0.0
+#pytest-anyio>=0.18.0

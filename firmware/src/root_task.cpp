@@ -3,6 +3,8 @@
 #include "semaphore_guard.h"
 #include "util.h"
 
+// TODO: check if all ONBOARDING and HAS case switches can be remove
+
 QueueHandle_t trigger_motor_calibration_;
 uint8_t trigger_motor_calibration_event_;
 
@@ -72,33 +74,52 @@ void RootTask::run()
     serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_strain_calibration_tag, [this](PB_ToSmartknob to_smartknob)
                                                    { sensors_task_->factoryStrainCalibrationCallback(to_smartknob.payload.strain_calibration.calibration_weight); });
 
+    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_request_state_tag, [this](PB_ToSmartknob to_smartknob)
+                                                   { sendCurrentKnobState(); });
+
     serial_protocol_protobuf_->registerCommandCallback(PB_SmartKnobCommand_MOTOR_CALIBRATE, [this]()
                                                        { motor_task_.runCalibration(); });
 
     auto callbackGetKnobInfo = [this]()
     {
+        LOGI("=== GET_KNOB_INFO CALLBACK START ===");
         PB_Knob knob = {};
+
+        LOGI("Setting MAC and IP addresses...");
 #if !SERIAL_ONLY_MODE
         strlcpy(knob.mac_address, WiFi.macAddress().c_str(), sizeof(knob.mac_address));
         strlcpy(knob.ip_address, WiFi.localIP().toString().c_str(), sizeof(knob.ip_address));
+        LOGI("WiFi mode: MAC=%s, IP=%s", knob.mac_address, knob.ip_address);
 #else
         strlcpy(knob.mac_address, "00:00:00:00:00:00", sizeof(knob.mac_address));
         strlcpy(knob.ip_address, "0.0.0.0", sizeof(knob.ip_address));
+        LOGI("Serial-only mode: MAC=%s, IP=%s", knob.mac_address, knob.ip_address);
 #endif
+
+        LOGI("Getting configuration...");
         const PB_PersistentConfiguration config = configuration_->get();
+        LOGI("Configuration retrieved successfully");
+
         if (config.version != 0)
         {
+            LOGI("Setting persistent config (version %u)", config.version);
             knob.has_persistent_config = true;
             knob.persistent_config = config;
         }
         else
         {
+            LOGI("No persistent config available");
             knob.has_persistent_config = false;
         }
+
+        LOGI("Getting settings...");
         knob.has_settings = true;
         knob.settings = configuration_->getSettings();
+        LOGI("Settings retrieved successfully");
 
+        LOGI("Calling sendKnobInfo...");
         serial_protocol_protobuf_->sendKnobInfo(knob);
+        LOGI("=== GET_KNOB_INFO CALLBACK END ===");
     };
     serial_protocol_protobuf_->registerCommandCallback(PB_SmartKnobCommand_GET_KNOB_INFO, callbackGetKnobInfo);
 
@@ -109,7 +130,10 @@ void RootTask::run()
     serial_protocol_plaintext_->registerKeyHandler('y', [this]()
                                                    { sensors_task_->factoryStrainCalibrationCallback((float)CALIBRATION_WEIGHT); });
     auto callbackSetProtocol = [this]()
-    { free_rtos_adapter_->setProtocol(serial_protocol_protobuf_); };
+    {
+        LOGI("=== DEBUG: SWITCHING TO PROTOBUF MODE ===");
+        free_rtos_adapter_->setProtocol(serial_protocol_protobuf_);
+    };
     serial_protocol_plaintext_->registerKeyHandler('q', callbackSetProtocol);
     serial_protocol_plaintext_->registerKeyHandler(0, callbackSetProtocol); // Switches to protobuf protocol on protobuf message from configurator
 
@@ -234,8 +258,18 @@ void RootTask::run()
 
     AppState app_state = {};
 
+    // Debug counter for periodic logging
+    uint32_t debug_counter = 0;
+
     while (1)
     {
+        debug_counter++;
+
+        // Periodic debug message every 10 seconds (assuming 10ms loop delay)
+        if (debug_counter % 1000 == 0)
+        {
+            LOGI("=== DEBUG: Main loop running, count=%u ===", debug_counter);
+        }
         if (xQueueReceive(trigger_motor_calibration_, &trigger_motor_calibration_event_, 0) == pdTRUE)
         {
             app_state.screen_state.awake_until = millis() + app_state.screen_state.awake_until;
@@ -325,6 +359,7 @@ void RootTask::run()
                     ->handleEvent(wifi_event);
                 switch (configuration_->getOSConfiguration()->mode)
                 {
+
                 case ONBOARDING:
                     display_task_->enableOnboarding();
                     display_task_->getOnboardingFlow()->triggerMotorConfigUpdate();
@@ -815,4 +850,17 @@ void RootTask::applyConfig(PB_SmartKnobConfig config, bool from_remote)
     remote_controlled_ = from_remote;
     latest_config_ = config;
     motor_task_.setConfig(config);
+}
+
+void RootTask::sendCurrentKnobState()
+{
+    // Use existing latest_state_ and apply current press_nonce
+    PB_SmartKnobState state = latest_state_;
+    state.press_nonce = press_count_;
+
+    // Send via protocol
+    if (serial_protocol_protobuf_)
+    {
+        serial_protocol_protobuf_->sendKnobState(state);
+    }
 }
