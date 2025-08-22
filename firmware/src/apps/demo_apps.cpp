@@ -1,6 +1,6 @@
 #include "demo_apps.h"
 
-DemoApps::DemoApps(SemaphoreHandle_t mutex) : Apps(mutex)
+CustomApps::CustomApps(SemaphoreHandle_t mutex) : Apps(mutex)
 {
     // Initialize demo apps directly
     clear();
@@ -22,7 +22,7 @@ DemoApps::DemoApps(SemaphoreHandle_t mutex) : Apps(mutex)
     menu->setMenuName("Demo");
 }
 
-void DemoApps::handleNavigationEvent(NavigationEvent event)
+void CustomApps::handleNavigationEvent(NavigationEvent event)
 {
     switch (event)
     {
@@ -39,7 +39,7 @@ void DemoApps::handleNavigationEvent(NavigationEvent event)
     Apps::handleNavigationEvent(event);
 }
 
-void DemoApps::setOSConfigNotifier(OSConfigNotifier *os_config_notifier)
+void CustomApps::setOSConfigNotifier(OSConfigNotifier *os_config_notifier)
 {
     this->os_config_notifier = os_config_notifier;
 }

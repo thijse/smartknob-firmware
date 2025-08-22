@@ -118,12 +118,6 @@ EntityStateUpdate LightDimmerApp::updateStateFromKnob(PB_SmartKnobState state)
 {
     EntityStateUpdate new_state;
 
-    if (state_sent_from_hass)
-    {
-        state_sent_from_hass = false;
-        return new_state;
-    }
-
     current_position = state.current_position;
 
     sub_position_unit = state.sub_position_unit;

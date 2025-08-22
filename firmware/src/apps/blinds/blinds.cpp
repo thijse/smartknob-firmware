@@ -64,11 +64,6 @@ void BlindsApp::initScreen()
 EntityStateUpdate BlindsApp::updateStateFromKnob(PB_SmartKnobState state)
 {
     EntityStateUpdate new_state;
-    if (state_sent_from_hass)
-    {
-        state_sent_from_hass = false;
-        return new_state;
-    }
 
     current_closed_position = state.current_position;
 

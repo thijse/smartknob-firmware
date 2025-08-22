@@ -324,11 +324,6 @@ void ClimateApp::updateModeIcon()
 EntityStateUpdate ClimateApp::updateStateFromKnob(PB_SmartKnobState state)
 {
     EntityStateUpdate new_state;
-    if (state_sent_from_hass)
-    {
-        state_sent_from_hass = false;
-        return new_state;
-    }
     target_temperature = state.current_position;
 
     // needed to next reload of App

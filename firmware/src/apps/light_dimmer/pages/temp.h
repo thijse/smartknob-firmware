@@ -4,7 +4,6 @@
 #include "./util.h"
 #include <cmath>
 
-// TODO: Retrieve from HASS entity.
 #define temp_max 2000 // Philips hue min
 #define temp_min 6500 // Philips hue max
 

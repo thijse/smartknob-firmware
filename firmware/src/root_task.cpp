@@ -147,10 +147,6 @@ void RootTask::run()
 
         switch (os_config->mode)
         {
-        case ONBOARDING:
-            display_task_->enableOnboarding();
-            this->configuration_->saveOSConfiguration(*os_config);
-            break;
         case DEMO:
             display_task_->enableDemo();
             break;
@@ -169,12 +165,9 @@ void RootTask::run()
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 
-    display_task_->getOnboardingFlow()->setMotorNotifier(&motor_notifier);
-    display_task_->getOnboardingFlow()->setOSConfigNotifier(&os_config_notifier_);
-
     display_task_->getErrorHandlingFlow()->setMotorNotifier(&motor_notifier);
-    display_task_->getDemoApps()->setMotorNotifier(&motor_notifier);
-    display_task_->getDemoApps()->setOSConfigNotifier(&os_config_notifier_);
+    display_task_->getApps()->setMotorNotifier(&motor_notifier);
+    display_task_->getApps()->setOSConfigNotifier(&os_config_notifier_);
 
     // TODO: move playhaptic to notifier? or other interface to just pass "possible" motor commands not entire object/class.
     reset_task_->setMotorTask(&motor_task_);
@@ -270,14 +263,8 @@ void RootTask::run()
             app_state.os_mode_state = configuration_->getOSConfiguration()->mode;
             switch (app_state.os_mode_state)
             {
-            case OSMode::ONBOARDING:
-                if (strcmp(latest_state_.config.id, "ONBOARDING") == 0)
-                {
-                    entity_state_update_to_send = display_task_->getOnboardingFlow()->update(app_state);
-                }
-                break;
             case OSMode::DEMO:
-                entity_state_update_to_send = display_task_->getDemoApps()->update(app_state);
+                entity_state_update_to_send = display_task_->getApps()->update(app_state);
                 break;
             default:
                 break;
@@ -414,11 +401,8 @@ void RootTask::updateHardware(AppState *app_state)
                 case NO_ERROR:
                     switch (configuration_->getOSConfiguration()->mode)
                     {
-                    case ONBOARDING:
-                        display_task_->getOnboardingFlow()->handleNavigationEvent(event);
-                        break;
                     case DEMO:
-                        display_task_->getDemoApps()->handleNavigationEvent(event);
+                        display_task_->getApps()->handleNavigationEvent(event);
                         break;
                     default:
                         break;
@@ -443,11 +427,8 @@ void RootTask::updateHardware(AppState *app_state)
                 case NO_ERROR:
                     switch (configuration_->getOSConfiguration()->mode)
                     {
-                    case ONBOARDING:
-                        display_task_->getOnboardingFlow()->handleNavigationEvent(event);
-                        break;
                     case DEMO:
-                        display_task_->getDemoApps()->handleNavigationEvent(event);
+                        display_task_->getApps()->handleNavigationEvent(event);
                         break;
                     default:
                         break;

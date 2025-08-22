@@ -15,12 +15,9 @@
 
 #include "./apps/demo_apps.h"
 
-#include "onboarding_flow/onboarding_flow.h"
 #include "error_handling_flow/error_handling_flow.h"
 
 const uint8_t BOOT_MODE_NOT_SET = 0;
-const uint8_t BOOT_MODE_ONBOARDING = 1;
-const uint8_t BOOT_MODE_HASS = 2;
 
 class DisplayTask : public Task<DisplayTask>
 {
@@ -33,10 +30,8 @@ public:
     QueueHandle_t getKnobStateQueue();
 
     void setBrightness(uint16_t brightness);
-    OnboardingFlow *getOnboardingFlow();
-    DemoApps *getDemoApps();
+    CustomApps *getApps();
 
-    void enableOnboarding();
     void enableDemo();
 
     ErrorHandlingFlow *getErrorHandlingFlow();
@@ -47,8 +42,7 @@ protected:
     void run();
 
 private:
-    OnboardingFlow *onboarding_flow = nullptr;
-    DemoApps *demo_apps = nullptr;
+    CustomApps *demo_apps = nullptr;
     ErrorHandlingFlow *error_handling_flow = nullptr;
 
     QueueHandle_t app_state_queue_;
