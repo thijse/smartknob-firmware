@@ -7,9 +7,7 @@
 // Forward declarations to avoid circular dependencies
 enum OSMode
 {
-    ONBOARDING = 0,
-    DEMO,
-    UNSET
+    RUNNING = 0
 };
 
 // TODO: move it into the app.h

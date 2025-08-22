@@ -39,7 +39,7 @@ DemoSettingsPage::DemoSettingsPage(lv_obj_t *parent) : BasePage(parent)
 void DemoSettingsPage::updateFromSystem(AppState state)
 {
     state_ = state;
-    if (state.os_mode_state == DEMO)
+    if (state.os_mode_state == OSMode::RUNNING)
     {
         lv_label_set_text(prompt_label, "DISABLED");
     }
@@ -57,9 +57,9 @@ void DemoSettingsPage::handleNavigation(NavigationEvent event)
     case NavigationEvent::SHORT:
         if (os_config_notifier_ != nullptr)
         {
-            if (state_.os_mode_state != DEMO)
+            if (state_.os_mode_state != OSMode::RUNNING)
             {
-                os_config_notifier_->setOSMode(OSMode::DEMO);
+                os_config_notifier_->setOSMode(OSMode::RUNNING);
             }
             else
             {

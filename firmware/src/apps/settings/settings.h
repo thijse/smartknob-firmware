@@ -4,16 +4,12 @@
 #include "./display/page_manager.h"
 #include "pages/demo.h"
 #include "pages/motor_calib.h"
-#include "pages/update.h"
 #include "./notify/os_config_notifier/os_config_notifier.h"
 
 enum SettingsPages
 {
-    // HASS_PAGE_SETTINGS,
-    DEMO_PAGE_SETTINGS,
+    APPS_PAGE_SETTINGS,
     MOTOR_CALIBRATION_SETTINGS,
-    // STRAIN_CALIBRATION_SETTINGS,
-    UPDATE_PAGE_SETTINGS,
     SETTINGS_PAGE_COUNT
 };
 
@@ -23,20 +19,17 @@ class SettingsPageManager : public PageManager<SettingsPages>
 public:
     SettingsPageManager(lv_obj_t *parent, SemaphoreHandle_t mutex, OSConfigNotifier *os_config_notifier) : PageManager<SettingsPages>(parent, mutex)
     {
-        // add(HASS_PAGE_SETTINGS, new HASSSettingsPage(parent));
         DemoSettingsPage *demo_page = new DemoSettingsPage(parent);
         demo_page->setOSConfigNotifier(os_config_notifier);
-        add(DEMO_PAGE_SETTINGS, demo_page);
+        add(APPS_PAGE_SETTINGS, demo_page);
         add(MOTOR_CALIBRATION_SETTINGS, new MotorCalibrationSettingsPage(parent));
-        add(UPDATE_PAGE_SETTINGS, new UpdateSettingsPage(parent));
-        // add(STRAIN_CALIBRATION_SETTINGS, new StrainCalibrationSettingsPage(parent));
 
         dotIndicatorInit();
 
         page_name = lv_label_create(overlay_);
         lv_obj_align(page_name, LV_ALIGN_TOP_MID, 0, 10);
 
-        show(DEMO_PAGE_SETTINGS);
+        show(APPS_PAGE_SETTINGS);
     }
 
     void show(SettingsPages page_enum) override
@@ -54,20 +47,11 @@ public:
 
                     switch (current_page_)
                     {
-                    // case HASS_PAGE_SETTINGS:
-                    //     lv_label_set_text(page_name, "HASS");
-                    //     break;
-                    case DEMO_PAGE_SETTINGS:
-                        lv_label_set_text(page_name, "DEMO");
+                    case APPS_PAGE_SETTINGS:
+                        lv_label_set_text(page_name, "APPS");
                         break;
                     case MOTOR_CALIBRATION_SETTINGS:
                         lv_label_set_text(page_name, "MOTOR");
-                        break;
-                    // case STRAIN_CALIBRATION_SETTINGS:
-                    //     lv_label_set_text(page_name, "STRAIN");
-                    //     break;
-                    case UPDATE_PAGE_SETTINGS:
-                        lv_label_set_text(page_name, "UPDATE");
                         break;
                     default:
                         lv_label_set_text(page_name, "Unknown");

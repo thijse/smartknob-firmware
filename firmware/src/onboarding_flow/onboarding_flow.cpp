@@ -82,7 +82,7 @@ void OnboardingFlow::handleNavigationEvent(NavigationEvent event)
             case ABOUT_PAGE:
                 break;
             case DEMO_PAGE:
-                os_config_notifier->setOSMode(OSMode::DEMO);
+                os_config_notifier->setOSMode(OSMode::RUNNING);
                 break;
             default:
                 LOGE("Unhandled navigation event");

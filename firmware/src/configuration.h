@@ -29,7 +29,7 @@ const uint32_t SETTINGS_VERSION = 1;
 
 struct OSConfiguration
 {
-    OSMode mode = ONBOARDING;
+    OSMode mode = RUNNING;
 };
 
 static const SETTINGS_Settings default_settings =

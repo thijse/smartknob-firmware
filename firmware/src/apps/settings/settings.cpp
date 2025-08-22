@@ -37,7 +37,7 @@ SettingsPages getSettingsPageEnum(uint8_t screen)
     {
         return static_cast<SettingsPages>(screen);
     }
-    return DEMO_PAGE_SETTINGS; // TODO handle error here instead of returning DEMO_PAGE_SETTINGS
+    return APPS_PAGE_SETTINGS; // TODO handle error here instead of returning APPS_PAGE_SETTINGS
 }
 
 EntityStateUpdate SettingsApp::updateStateFromKnob(PB_SmartKnobState state)

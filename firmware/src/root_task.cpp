@@ -145,14 +145,8 @@ void RootTask::run()
 
         this->configuration_->saveOSConfigurationInMemory(*os_config);
 
-        switch (os_config->mode)
-        {
-        case DEMO:
-            display_task_->enableDemo();
-            break;
-        default:
-            break;
-        } });
+        // With simplified OSMode, always enable demo
+        display_task_->enableDemo(); });
 
     // waiting for config to be loaded
     bool is_configuration_loaded = false;
@@ -175,7 +169,7 @@ void RootTask::run()
     configuration_->loadOSConfiguration();
 
     // In serial-only mode, always go directly to demo mode
-    os_config_notifier_.setOSMode(DEMO);
+    os_config_notifier_.setOSMode(OSMode::RUNNING);
     display_task_->enableDemo();
 
     // Enable auto-broadcasting with default settings
@@ -261,14 +255,8 @@ void RootTask::run()
             currentSubPosition = roundedNewPosition;
             app_state.motor_state = latest_state_;
             app_state.os_mode_state = configuration_->getOSConfiguration()->mode;
-            switch (app_state.os_mode_state)
-            {
-            case OSMode::DEMO:
-                entity_state_update_to_send = display_task_->getApps()->update(app_state);
-                break;
-            default:
-                break;
-            }
+            // With simplified OSMode, always update apps
+            entity_state_update_to_send = display_task_->getApps()->update(app_state);
 
 #if SK_ALS
             if (settings_.screen.dim)
@@ -399,14 +387,8 @@ void RootTask::updateHardware(AppState *app_state)
                 switch (display_task_->getErrorHandlingFlow()->getErrorType())
                 {
                 case NO_ERROR:
-                    switch (configuration_->getOSConfiguration()->mode)
-                    {
-                    case DEMO:
-                        display_task_->getApps()->handleNavigationEvent(event);
-                        break;
-                    default:
-                        break;
-                    }
+                    // With simplified OSMode, always handle navigation
+                    display_task_->getApps()->handleNavigationEvent(event);
                     break;
                 // Network error handling removed for serial-only mode
                 default:
@@ -425,14 +407,8 @@ void RootTask::updateHardware(AppState *app_state)
                 switch (display_task_->getErrorHandlingFlow()->getErrorType())
                 {
                 case NO_ERROR:
-                    switch (configuration_->getOSConfiguration()->mode)
-                    {
-                    case DEMO:
-                        display_task_->getApps()->handleNavigationEvent(event);
-                        break;
-                    default:
-                        break;
-                    }
+                    // With simplified OSMode, always handle navigation
+                    display_task_->getApps()->handleNavigationEvent(event);
                     break;
                 // Network error handling removed for serial-only mode
                 default:

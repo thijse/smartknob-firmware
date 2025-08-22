@@ -7,8 +7,6 @@
 #include "apps/switch/switch.h"
 #include "apps/light_dimmer/light_dimmer.h"
 
-#include "cJSON.h"
-
 #define TFT_HOR_RES 240
 #define TFT_VER_RES 240
 
@@ -61,10 +59,7 @@ void DisplayTask::run()
 
     demo_apps = new CustomApps(mutex_);
     error_handling_flow = new ErrorHandlingFlow(mutex_);
-    while (display_os_mode == UNSET)
-    {
-        delay(50);
-    }
+    // With simplified OSMode, we can proceed directly to the main loop
 
     while (1)
     {
@@ -88,7 +83,7 @@ void DisplayTask::setBrightness(uint16_t brightness)
 
 void DisplayTask::enableDemo()
 {
-    display_os_mode = DEMO;
+    display_os_mode = OSMode::RUNNING;
     demo_apps->render();
     demo_apps->triggerMotorConfigUpdate();
 }

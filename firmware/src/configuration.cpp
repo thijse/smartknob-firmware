@@ -238,7 +238,7 @@ SETTINGS_Settings Configuration::getSettings()
 
 bool Configuration::resetToDefaults()
 {
-    EEPROM.put(OS_MODE_EEPROM_POS, OSMode::ONBOARDING);
+    EEPROM.put(OS_MODE_EEPROM_POS, OSMode::RUNNING);
     EEPROM.commit();
     return true;
 }
@@ -265,15 +265,8 @@ bool Configuration::loadOSConfiguration()
     // boot mode
     EEPROM.get(OS_MODE_EEPROM_POS, os_config.mode);
 
-    if (os_config.mode > OSMode::DEMO)
-    {
-        os_config.mode = OSMode::ONBOARDING;
-    }
-
-    if (os_config.mode < 0)
-    {
-        os_config.mode = OSMode::ONBOARDING;
-    }
+    // With simplified OSMode, always use RUNNING
+    os_config.mode = OSMode::RUNNING;
 
     return true;
 }
@@ -289,8 +282,8 @@ bool Configuration::saveFactoryStrainCalibration(float strain_scale)
 
 OSConfiguration *Configuration::getOSConfiguration()
 {
-    // Force demo mode when in serial-only mode
-    os_config.mode = OSMode::DEMO;
+    // Force running mode when in serial-only mode
+    os_config.mode = OSMode::RUNNING;
     return &os_config;
 }
 

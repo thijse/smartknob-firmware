@@ -7,7 +7,6 @@
 #include "lvgl.h"
 
 #include <Arduino.h>
-#include <HTTPClient.h>
 
 #include "proto/proto_gen/smartknob.pb.h"
 #include "task.h"
@@ -16,8 +15,6 @@
 #include "./apps/demo_apps.h"
 
 #include "error_handling_flow/error_handling_flow.h"
-
-const uint8_t BOOT_MODE_NOT_SET = 0;
 
 class DisplayTask : public Task<DisplayTask>
 {
@@ -36,8 +33,6 @@ public:
 
     ErrorHandlingFlow *getErrorHandlingFlow();
 
-    void enableErrorHandlingFlow();
-
 protected:
     void run();
 
@@ -52,7 +47,7 @@ private:
     uint16_t brightness_ = UINT16_MAX;
     char buf_[128];
 
-    OSMode display_os_mode = UNSET;
+    OSMode display_os_mode = OSMode::RUNNING;
     ErrorType error_type;
 };
 
