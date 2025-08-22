@@ -28,7 +28,7 @@ public:
     void weightMeasurementCallback();
 
     void setSharedEventsQueue(QueueHandle_t shared_event_queue);
-    void publishEvent(WiFiEvent event);
+    void publishEvent(Event event);
 
     bool powerDownAllowed();
 

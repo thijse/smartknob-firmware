@@ -2,7 +2,6 @@
 #include "../app.h"
 #include "../util.h"
 #include "./display/page_manager.h"
-#include "pages/wifi.h"
 #include "pages/demo.h"
 #include "pages/motor_calib.h"
 #include "pages/update.h"
@@ -10,7 +9,6 @@
 
 enum SettingsPages
 {
-    WIFI_PAGE_SETTINGS,
     // HASS_PAGE_SETTINGS,
     DEMO_PAGE_SETTINGS,
     MOTOR_CALIBRATION_SETTINGS,
@@ -25,7 +23,6 @@ class SettingsPageManager : public PageManager<SettingsPages>
 public:
     SettingsPageManager(lv_obj_t *parent, SemaphoreHandle_t mutex, OSConfigNotifier *os_config_notifier) : PageManager<SettingsPages>(parent, mutex)
     {
-        add(WIFI_PAGE_SETTINGS, new WiFiSettingsPage(parent));
         // add(HASS_PAGE_SETTINGS, new HASSSettingsPage(parent));
         DemoSettingsPage *demo_page = new DemoSettingsPage(parent);
         demo_page->setOSConfigNotifier(os_config_notifier);
@@ -39,7 +36,7 @@ public:
         page_name = lv_label_create(overlay_);
         lv_obj_align(page_name, LV_ALIGN_TOP_MID, 0, 10);
 
-        show(WIFI_PAGE_SETTINGS);
+        show(DEMO_PAGE_SETTINGS);
     }
 
     void show(SettingsPages page_enum) override
@@ -57,9 +54,6 @@ public:
 
                     switch (current_page_)
                     {
-                    case WIFI_PAGE_SETTINGS:
-                        lv_label_set_text(page_name, "WiFi");
-                        break;
                     // case HASS_PAGE_SETTINGS:
                     //     lv_label_set_text(page_name, "HASS");
                     //     break;
@@ -124,7 +118,6 @@ public:
     void setOSConfigNotifier(OSConfigNotifier *os_config_notifier);
 
 private:
-    ConnectivityState connectivity_state;
     char ip_address[20];
     char ssid[128];
 

@@ -22,45 +22,6 @@ const uint8_t VIRTUAL_BUTTON_SHORT_RELEASED = 2;
 const uint8_t VIRTUAL_BUTTON_LONG_PRESSED = 3;
 const uint8_t VIRTUAL_BUTTON_LONG_RELEASED = 4;
 
-struct ConnectivityState
-{
-    bool is_connected;
-    int8_t signal_strength;
-    /* *
-  0 - Excellent
-  1 - Good
-  2 - Fair
-  3 - Poor
-  4 - No signal
-    */
-    uint8_t signal_strenth_status;
-    char ssid[128];
-    char ip_address[20];
-
-    bool is_ap;
-    IPAddress ap_ip_address;
-    bool ap_has_clients;
-
-    bool operator!=(const ConnectivityState &other) const
-    {
-        return is_connected != other.is_connected ||
-               signal_strength != other.signal_strength ||
-               signal_strenth_status != other.signal_strenth_status ||
-               strcmp(ssid, other.ssid) != 0 ||
-               strcmp(ip_address, other.ip_address) != 0 ||
-               is_ap != other.is_ap ||
-               ap_ip_address != other.ap_ip_address ||
-               ap_has_clients != other.ap_has_clients;
-    }
-};
-
-struct MqttState
-{
-    bool is_connected;
-    std::string server;
-    std::string client_id;
-};
-
 struct IlluminationState
 {
     float lux;
@@ -108,8 +69,6 @@ struct AppState
 {
     OSMode os_mode_state;
     PB_SmartKnobState motor_state;
-    ConnectivityState connectivity_state;
-    MqttState mqtt_state;
     ProximityState proximiti_state;
     ScreenState screen_state;
     cJSON *apps;

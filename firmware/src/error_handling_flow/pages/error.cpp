@@ -57,42 +57,14 @@ void ErrorPage::show()
     LOGE("Error event: %d", error_state.latest_event.type);
     switch (error_state.latest_error_type)
     {
-    case ErrorType::MQTT_ERROR:
-        lv_label_set_text(error_type_label, "MQTT");
-        break;
-    case ErrorType::WIFI_ERROR:
-        lv_label_set_text(error_type_label, "WIFI");
-        break;
     default:
         break;
     }
 
     switch (error_state.latest_event.type)
     {
-    case EventType::SK_MQTT_CONNECTION_FAILED:
-    case EventType::SK_WIFI_STA_CONNECTION_FAILED:
-        lv_obj_add_flag(qr_code, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(press_to_retry_label, LV_OBJ_FLAG_HIDDEN);
-
-        lv_label_set_text(error_event_label, "Connection failed");
-        if (timer == nullptr)
-        {
-            timer = lv_timer_create(retry_timer, 250, this);
-        }
-        break;
-    case EventType::SK_MQTT_RETRY_LIMIT_REACHED:
-    case EventType::SK_WIFI_STA_RETRY_LIMIT_REACHED:
-        lv_timer_del(timer);
-        timer = nullptr;
-        lv_label_set_text(countdown_label, "");
-        lv_label_set_text(retry_label, "");
-
-        lv_obj_clear_flag(qr_code, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(press_to_retry_label, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(error_event_label, "Retry limit reached");
-        break;
-
     default:
+        lv_label_set_text(error_event_label, "System error");
         break;
     }
 

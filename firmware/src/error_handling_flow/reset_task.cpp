@@ -34,7 +34,7 @@ void ResetTask::run()
                     softReset();
                 }
 
-                WiFiEvent event = {
+                Event event = {
                     .type = EventType::SK_RESET_BUTTON_RELEASED,
                 };
                 publishEvent(event);
@@ -50,7 +50,7 @@ void ResetTask::run()
             {
                 if (!held)
                 {
-                    WiFiEvent event = {
+                    Event event = {
                         .type = EventType::SK_RESET_BUTTON_PRESSED,
                     };
                     publishEvent(event);
@@ -135,7 +135,7 @@ void ResetTask::setSharedEventsQueue(QueueHandle_t shared_events_queue)
     this->shared_events_queue = shared_events_queue;
 }
 
-void ResetTask::publishEvent(WiFiEvent event)
+void ResetTask::publishEvent(Event event)
 {
     event.sent_at = millis();
     xQueueSendToBack(shared_events_queue, &event, 0);

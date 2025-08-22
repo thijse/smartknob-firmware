@@ -29,14 +29,10 @@ void DemoApps::handleNavigationEvent(NavigationEvent event)
     case NavigationEvent::LONG:
         if (active_id == MENU)
         {
-#if !SERIAL_ONLY_MODE
-            os_config_notifier->setOSMode(ONBOARDING);
-            return;
-#else
+
             // In serial-only mode, don't allow going back to onboarding
             // Long press in menu does nothing
             return;
-#endif
         }
         break;
     }

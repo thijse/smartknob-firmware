@@ -39,11 +39,11 @@ public:
     ErrorHandlingFlow(SemaphoreHandle_t mutex);
 
     void handleNavigationEvent(NavigationEvent event);
-    void handleEvent(WiFiEvent event);
+    void handleEvent(Event event);
     void setMotorNotifier(MotorNotifier *motor_notifier);
 
     void setSharedEventsQueue(QueueHandle_t shared_event_queue);
-    void publishEvent(WiFiEvent event);
+    void publishEvent(Event event);
 
     ErrorType getErrorType();
 
@@ -61,7 +61,7 @@ private:
 
     ErrorState error_state = {
         NO_ERROR,
-        SK_NO_EVENT,
+        {SK_NO_EVENT, {}, 0},
         1,
     };
 

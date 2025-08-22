@@ -12,6 +12,4 @@ private:
     lv_obj_t *update_label;
     lv_obj_t *update_qrcode;
     lv_obj_t *update_url_label;
-
-    ConnectivityState last_connectivity_state;
 };

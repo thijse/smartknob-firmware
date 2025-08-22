@@ -30,22 +30,8 @@ UpdateSettingsPage::UpdateSettingsPage(lv_obj_t *parent) : BasePage(parent)
 
 void UpdateSettingsPage::updateFromSystem(AppState state)
 {
-    if (state.connectivity_state.is_connected != last_connectivity_state.is_connected)
-    {
-        lv_label_set_text_fmt(update_label, "SCAN TO UPDATE");
-
-        if (!state.connectivity_state.is_connected)
-        {
-            lv_qrcode_update(update_qrcode, "http://192.168.4.1/update", strlen("http://192.168.4.1/update"));
-        }
-        else
-        {
-            char ip_data[50];
-            sprintf(ip_data, "http://%s/update", state.connectivity_state.ip_address);
-            lv_qrcode_update(update_qrcode, ip_data, strlen(ip_data));
-            lv_label_set_text_fmt(update_url_label, "%s", ip_data);
-        }
-
-        last_connectivity_state = state.connectivity_state;
-    }
+    // Network functionality removed - serial-only mode
+    lv_label_set_text(update_label, "Serial Update Only");
+    lv_obj_add_flag(update_qrcode, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(update_url_label, LV_OBJ_FLAG_HIDDEN);
 }

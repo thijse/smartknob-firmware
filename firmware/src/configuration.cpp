@@ -13,25 +13,6 @@ Configuration::Configuration()
 {
     mutex_ = xSemaphoreCreateMutex();
     assert(mutex_ != NULL);
-
-#if !SERIAL_ONLY_MODE
-    wifi_config = WiFiConfiguration();
-    mqtt_config = MQTTConfiguration();
-
-    std::string mac_address = std::string(WiFi.macAddress().c_str());
-    mac_address.erase(
-        std::remove_if(
-            mac_address.begin(),
-            mac_address.end(),
-            [](char c)
-            {
-                return c == ':';
-            }),
-        mac_address.end());
-
-    sprintf(wifi_config.knob_id, "%s", std::string("SKDK_" + mac_address.substr(mac_address.length() - 6)).c_str());
-    sprintf(mqtt_config.knob_id, "%s", wifi_config.knob_id);
-#endif
 }
 
 Configuration::~Configuration()
@@ -41,11 +22,7 @@ Configuration::~Configuration()
 
 const char *Configuration::getKnobId()
 {
-#if !SERIAL_ONLY_MODE
-    return wifi_config.knob_id;
-#else
     return "SERIAL_KNOB";
-#endif
 }
 
 bool Configuration::loadFromDisk()
@@ -136,7 +113,7 @@ bool Configuration::saveToDisk()
 
     if (shared_events_queue != NULL)
     {
-        WiFiEvent event;
+        Event event;
         event.type = SK_CONFIGURATION_SAVED;
         publishEvent(event);
     }
@@ -235,7 +212,7 @@ bool Configuration::setSettings(SETTINGS_Settings &settings)
 
         if (shared_events_queue != NULL)
         {
-            WiFiEvent event;
+            Event event;
             event.type = SK_SETTINGS_CHANGED;
             publishEvent(event);
         }
@@ -261,79 +238,10 @@ SETTINGS_Settings Configuration::getSettings()
 
 bool Configuration::resetToDefaults()
 {
-#if !SERIAL_ONLY_MODE
-    EEPROM.put(WIFI_SET_EEPROM_POS, false);
-    EEPROM.put(MQTT_SET_EEPROM_POS, false);
-#endif
     EEPROM.put(OS_MODE_EEPROM_POS, OSMode::ONBOARDING);
     EEPROM.commit();
     return true;
 }
-
-#if !SERIAL_ONLY_MODE
-bool Configuration::saveWiFiConfiguration(WiFiConfiguration wifi_config_to_save)
-{
-    // TODO: persist in a file
-    char buf_[512];
-    sprintf(buf_, "Saving wifi credentials %s %s", wifi_config_to_save.ssid, wifi_config_to_save.passphrase);
-    LOGD(buf_);
-
-    is_wifi_set = true;
-    EEPROM.put(WIFI_SSID_EEPROM_POS, wifi_config_to_save.ssid);
-    EEPROM.put(WIFI_PASSPHRASE_EEPROM_POS, wifi_config_to_save.passphrase);
-    EEPROM.put(WIFI_SET_EEPROM_POS, is_wifi_set);
-
-    return EEPROM.commit();
-}
-
-WiFiConfiguration Configuration::getWiFiConfiguration()
-{
-    return wifi_config;
-}
-// TODO Move storage of config to fatfs instead of EEPROM
-bool Configuration::loadWiFiConfiguration()
-{
-    EEPROM.get(WIFI_SSID_EEPROM_POS, wifi_config.ssid);
-    EEPROM.get(WIFI_PASSPHRASE_EEPROM_POS, wifi_config.passphrase);
-    EEPROM.get(WIFI_SET_EEPROM_POS, is_wifi_set);
-
-    LOGV(LOG_LEVEL_DEBUG, "Loaded wifi credentials %s %s %d", wifi_config.ssid, wifi_config.passphrase, is_wifi_set);
-
-    return is_wifi_set;
-}
-
-bool Configuration::saveMQTTConfiguration(MQTTConfiguration mqtt_config_to_save)
-{
-    LOGV(LOG_LEVEL_DEBUG, "Saving MQTT credentials %s %d %s %s", mqtt_config_to_save.host, mqtt_config_to_save.port, mqtt_config_to_save.user, mqtt_config_to_save.password);
-
-    is_mqtt_set = true;
-    EEPROM.put(MQTT_HOST_EEPROM_POS, mqtt_config_to_save.host);
-    EEPROM.put(MQTT_PORT_EEPROM_POS, mqtt_config_to_save.port);
-    EEPROM.put(MQTT_USER_EEPROM_POS, mqtt_config_to_save.user);
-    EEPROM.put(MQTT_PASS_EEPROM_POS, mqtt_config_to_save.password);
-    EEPROM.put(MQTT_SET_EEPROM_POS, is_mqtt_set);
-
-    return EEPROM.commit();
-}
-
-MQTTConfiguration Configuration::getMQTTConfiguration()
-{
-    return mqtt_config;
-}
-
-bool Configuration::loadMQTTConfiguration()
-{
-    EEPROM.get(MQTT_HOST_EEPROM_POS, mqtt_config.host);
-    EEPROM.get(MQTT_PORT_EEPROM_POS, mqtt_config.port);
-    EEPROM.get(MQTT_USER_EEPROM_POS, mqtt_config.user);
-    EEPROM.get(MQTT_PASS_EEPROM_POS, mqtt_config.password);
-    EEPROM.get(MQTT_SET_EEPROM_POS, is_mqtt_set);
-
-    LOGV(LOG_LEVEL_DEBUG, "Loaded MQTT credentials %s %d %s %s %d", mqtt_config.host, mqtt_config.port, mqtt_config.user, mqtt_config.password, is_mqtt_set);
-
-    return is_mqtt_set;
-}
-#endif
 
 bool Configuration::saveOSConfigurationInMemory(OSConfiguration os_config)
 {
@@ -381,10 +289,8 @@ bool Configuration::saveFactoryStrainCalibration(float strain_scale)
 
 OSConfiguration *Configuration::getOSConfiguration()
 {
-#if SERIAL_ONLY_MODE
     // Force demo mode when in serial-only mode
     os_config.mode = OSMode::DEMO;
-#endif
     return &os_config;
 }
 
@@ -413,7 +319,7 @@ void Configuration::setSharedEventsQueue(QueueHandle_t shared_events_queue)
     this->shared_events_queue = shared_events_queue;
 }
 
-void Configuration::publishEvent(WiFiEvent event)
+void Configuration::publishEvent(Event event)
 {
     event.sent_at = millis();
     xQueueSendToBack(shared_events_queue, &event, 0);

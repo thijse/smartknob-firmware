@@ -47,9 +47,6 @@ RootTask::RootTask(
     knob_state_queue_ = xQueueCreate(1, sizeof(PB_SmartKnobState));
     assert(knob_state_queue_ != NULL);
 
-    connectivity_status_queue_ = xQueueCreate(1, sizeof(ConnectivityState));
-    assert(connectivity_status_queue_ != NULL);
-
     sensors_status_queue_ = xQueueCreate(100, sizeof(SensorsState));
     assert(sensors_status_queue_ != NULL);
 
@@ -191,7 +188,7 @@ void RootTask::run()
     // Value between [0, 65536] for brightness when not engaging with knob
     bool isCurrentSubPositionSet = false;
     float currentSubPosition;
-    WiFiEvent wifi_event;
+    Event wifi_event;
 
     AppState app_state = {};
 
@@ -231,10 +228,7 @@ void RootTask::run()
             }
         }
 
-        if (xQueueReceive(connectivity_status_queue_, &latest_connectivity_state_, 0) == pdTRUE)
-        {
-            app_state.connectivity_state = latest_connectivity_state_;
-        }
+        // Network connectivity removed for serial-only mode
 
         if (xQueueReceive(app_sync_queue_, &apps_, 0) == pdTRUE)
         {
@@ -415,10 +409,7 @@ void RootTask::updateHardware(AppState *app_state)
                         break;
                     }
                     break;
-                case MQTT_ERROR:
-                case WIFI_ERROR:
-                    display_task_->getErrorHandlingFlow()->handleNavigationEvent(event);
-                    break;
+                // Network error handling removed for serial-only mode
                 default:
                     break;
                 }
@@ -447,10 +438,7 @@ void RootTask::updateHardware(AppState *app_state)
                         break;
                     }
                     break;
-                case MQTT_ERROR:
-                case WIFI_ERROR:
-                    display_task_->getErrorHandlingFlow()->handleNavigationEvent(event);
-                    break;
+                // Network error handling removed for serial-only mode
                 default:
                     break;
                 }
@@ -565,11 +553,6 @@ void RootTask::loadConfiguration()
             configuration_loaded_ = true;
         }
     }
-}
-
-QueueHandle_t RootTask::getConnectivityStateQueue()
-{
-    return connectivity_status_queue_;
 }
 
 QueueHandle_t RootTask::getSensorsStateQueue()

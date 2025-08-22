@@ -348,7 +348,7 @@ void SensorsTask::run()
 #if SK_STRAIN
 void SensorsTask::factoryStrainCalibrationCallback(float calibration_weight)
 {
-    WiFiEvent event;
+    Event event;
     event.type = SK_STRAIN_CALIBRATION;
     event.body.calibration_step = factory_strain_calibration_step_;
     publishEvent(event);
@@ -563,7 +563,7 @@ void SensorsTask::setSharedEventsQueue(QueueHandle_t shared_events_queue)
     this->shared_events_queue = shared_events_queue;
 }
 
-void SensorsTask::publishEvent(WiFiEvent event)
+void SensorsTask::publishEvent(Event event)
 {
     event.sent_at = millis();
     xQueueSendToBack(shared_events_queue, &event, 0);
