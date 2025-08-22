@@ -83,6 +83,13 @@ private:
 
     SensorsState latest_sensors_state_ = {};
 
+    // Auto-broadcasting functionality
+    PB_SmartKnobState last_broadcast_state_ = {};
+    uint32_t last_broadcast_time_ = 0;
+    bool auto_broadcast_enabled_ = false;
+    float position_change_threshold_ = 0.1f; // Default: 0.1 units
+    uint32_t max_broadcast_interval_ = 100;  // Default: 100ms (10Hz)
+
     cJSON *apps_ = NULL;
 
     QueueHandle_t knob_state_queue_;
@@ -103,4 +110,11 @@ private:
     void applyConfig(PB_SmartKnobConfig config, bool from_remote);
     void publish(const AppState &state);
     void sendCurrentKnobState();
+
+    // Auto-broadcasting methods
+    void enableAutoBroadcast(bool enabled = true);
+    void setPositionChangeThreshold(float threshold);
+    void setMaxBroadcastRate(uint32_t rate_hz);
+    bool shouldBroadcastState(const PB_SmartKnobState &current_state);
+    void checkAndBroadcastState();
 };

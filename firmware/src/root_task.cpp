@@ -32,7 +32,11 @@ RootTask::RootTask(
                                                                                                                                                                        reset_task_(reset_task),
                                                                                                                                                                        free_rtos_adapter_(free_rtos_adapter),
                                                                                                                                                                        serial_protocol_plaintext_(serial_protocol_plaintext),
-                                                                                                                                                                       serial_protocol_protobuf_(serial_protocol_protobuf)
+                                                                                                                                                                       serial_protocol_protobuf_(serial_protocol_protobuf),
+                                                                                                                                                                       auto_broadcast_enabled_(false),
+                                                                                                                                                                       position_change_threshold_(0.1f),
+                                                                                                                                                                       max_broadcast_interval_(100),
+                                                                                                                                                                       last_broadcast_time_(0)
 {
 #if SK_DISPLAY
     assert(display_task != nullptr);
@@ -181,6 +185,11 @@ void RootTask::run()
     os_config_notifier_.setOSMode(DEMO);
     display_task_->enableDemo();
 
+    // Enable auto-broadcasting with default settings
+    enableAutoBroadcast(true);
+    setMaxBroadcastRate(10);
+    setPositionChangeThreshold(0.1f);
+
     motor_notifier.loopTick();
 
     EntityStateUpdate entity_state_update_to_send;
@@ -320,6 +329,12 @@ void RootTask::run()
             if (entity_state_update_to_send.play_haptic)
             {
                 motor_task_.playHaptic(true, false);
+            }
+
+            // NEW: Check for automatic broadcasting
+            if (auto_broadcast_enabled_)
+            {
+                checkAndBroadcastState();
             }
 
             publish(app_state);
@@ -602,5 +617,56 @@ void RootTask::sendCurrentKnobState()
     if (serial_protocol_protobuf_)
     {
         serial_protocol_protobuf_->sendKnobState(state);
+    }
+}
+
+// Auto-broadcasting method implementations
+void RootTask::enableAutoBroadcast(bool enabled)
+{
+    auto_broadcast_enabled_ = enabled;
+    LOGI("Auto broadcast %s", enabled ? "ENABLED" : "DISABLED");
+}
+
+void RootTask::setPositionChangeThreshold(float threshold)
+{
+    position_change_threshold_ = threshold;
+    LOGI("Position change threshold set to %.2f", threshold);
+}
+
+void RootTask::setMaxBroadcastRate(uint32_t rate_hz)
+{
+    max_broadcast_interval_ = 1000 / rate_hz; // Convert Hz to ms
+    LOGI("Max broadcast rate set to %u Hz (%u ms interval)", rate_hz, max_broadcast_interval_);
+}
+
+bool RootTask::shouldBroadcastState(const PB_SmartKnobState &current_state)
+{
+    // Check time-based rate limiting
+    uint32_t current_time = millis();
+    if (current_time - last_broadcast_time_ < max_broadcast_interval_)
+    {
+        return false; // Too soon since last broadcast
+    }
+
+    // Check for meaningful changes
+    bool position_changed = abs(current_state.sub_position_unit - last_broadcast_state_.sub_position_unit) >= position_change_threshold_;
+    bool press_changed = current_state.press_nonce != last_broadcast_state_.press_nonce;
+    bool config_changed = strcmp(current_state.config.id, last_broadcast_state_.config.id) != 0;
+
+    return position_changed || press_changed || config_changed;
+}
+
+void RootTask::checkAndBroadcastState()
+{
+    if (!auto_broadcast_enabled_)
+    {
+        return;
+    }
+
+    if (shouldBroadcastState(latest_state_))
+    {
+        sendCurrentKnobState();
+        last_broadcast_state_ = latest_state_;
+        last_broadcast_time_ = millis();
     }
 }
