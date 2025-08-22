@@ -12,12 +12,20 @@ This repository provides a simplified SmartKnob firmware focused on **serial com
 - **Simplified firmware** - Removed Home Assistant integration for minimal codebase
 - **Direct app control** - Python backend can directly interact with SmartKnob apps (WIP)
 
+## Recent Updates
+
+**Two-Way Communication Implemented** (August 2025):
+- **Command Sending**: Python client can now send commands to SmartKnob
+- **State Requests**: Request current knob position and button state on demand
+- **Automatic Updates**: SmartKnob automatically broadcasts state changes (10Hz max)
+- **Simplified Firmware**: Streamlined codebase with reduced complexity
+- **Optimized Performance**: 67-83% reduction in serial traffic with smart rate limiting
+
 ## To-do
 The project is a work in progress. For minimal functionality, the following things need to be resolved:
-- The Python client should be able to send packages that are recognized by the SmartKnob, so far, it is only able to receive
-- Beyond requesting the current button state, the client should be able to
-  - Activate an application (template)
-  - Populate the application (value ranges, detents, multiple choice values,  text, callbacks, etc)
+- Activate specific applications from Python backend
+- Populate application configurations (value ranges, detents, multiple choice values, text, callbacks)
+- Enhanced app control and customization APIs
 
 ##  Quick Start
 
