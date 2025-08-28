@@ -198,7 +198,7 @@ void RootTask::run()
         // Periodic debug message every 10 seconds (assuming 10ms loop delay)
         if (debug_counter % 1000 == 0)
         {
-            LOGI("=== DEBUG: Main loop running, count=%u ===", debug_counter);
+            //LOGI("=== DEBUG: Main loop running, count=%u ===", debug_counter);
         }
         if (xQueueReceive(trigger_motor_calibration_, &trigger_motor_calibration_event_, 0) == pdTRUE)
         {
@@ -227,15 +227,14 @@ void RootTask::run()
         // Network connectivity removed for serial-only mode
 
         if (xQueueReceive(app_sync_queue_, &apps_, 0) == pdTRUE)
-        {
-            LOGI("App sync requested from HASS!");
-            // MQTT functionality removed for serial-only mode
+        {            
+            // Does nothing currently. MQTT functionality removed for serial-only mode
         }
 
         if (xQueueReceive(knob_state_queue_, &latest_state_, 0) == pdTRUE)
         {
 
-            // The following is a smoothing filter (rounding) on the sub position unit (to avoid flakines).
+            // The following is a smoothing filter (rounding) on the sub position unit (to avoid flakiness).
             float roundedNewPosition = round(latest_state_.sub_position_unit * 3) / 3.0;
             // This if is used to understand if we have touched the knob since last state.
             if (isCurrentSubPositionSet)

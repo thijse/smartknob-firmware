@@ -25,7 +25,7 @@ MenuApp::MenuApp(SemaphoreHandle_t mutex) : Menu(mutex)
 EntityStateUpdate MenuApp::updateStateFromKnob(PB_SmartKnobState state)
 {
     // TODO: cache menu size
-    // might be needed to make sure first item is selected on "reload" but might fuck if user returns from app to menu again
+    // might be needed to make sure first item is selected on "reload" but might mess up if user returns from app to menu again
     // motor_config.position_nonce = 1;
     // motor_config.position = 1;
 

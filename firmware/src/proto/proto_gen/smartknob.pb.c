@@ -48,6 +48,13 @@ PB_BIND(PB_StrainState, PB_StrainState, AUTO)
 PB_BIND(PB_StrainCalibration, PB_StrainCalibration, AUTO)
 
 
+PB_BIND(PB_AppComponent, PB_AppComponent, AUTO)
+
+
+PB_BIND(PB_ToggleConfig, PB_ToggleConfig, AUTO)
+
+
+
 
 
 

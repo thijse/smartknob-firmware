@@ -13,7 +13,7 @@ from .protocol import SmartKnobConnection, SmartKnobProtocol
 
 logger = logging.getLogger(__name__)
 
-# USB VID/PID pairs for known SmartKnob devices (from smartknob-web)
+# USB VID/PID pairs for known SmartKnob devices 
 SMARTKNOB_USB_IDS = [
     (0x1a86, 0x7523),  # CH340 USB-to-serial chip
     (0x303a, 0x1001),  # ESP32-S3 native USB

@@ -1,30 +1,72 @@
 #!/usr/bin/env python3
 """
-SmartKnob Protobuf Generation Script (Python-Only)
+SmartKnob Protobuf Generation Script (Python + C++)
 
-This script generates Python protobuf files from the .proto definitions,
-keeping them in sync with the firmware build process.
+Generates Python and C++ protobuf files from shared .proto definitions,
+enabling communication between Python clients and C++ firmware.
 
-Uses grpcio-tools for Python-only protobuf compilation (no external protoc needed).
+Features:
+    - Python protobuf generation using grpcio-tools
+    - C++ nanopb generation for embedded firmware
+    - Unified generation with --all flag
+    - Automatic import fixing and backup management
+    - Support for AppComponent system (remote app configuration)
 
 Usage:
-    python generate_protobuf.py
+    python generate_protobuf.py [--python] [--cpp] [--all]
 
-Requirements:
-    - grpcio-tools (pip install grpcio-tools)
-    - Access to ../proto/ directory with .proto files
+Arguments:
+    --python    Generate Python files only (default)
+    --cpp       Generate C++ nanopb files only  
+    --all       Generate both Python and C++ files
+
+Generated Files:
+    Python:  smartknob/proto_gen/*.py     (for smartknob-connection2 client)
+    C++:     ../../firmware/src/proto/proto_gen/*.pb.h/.pb.c  (for firmware)
+
+Setup Requirements:
+    1. Install Python dependencies:
+       pip install grpcio-tools>=1.50.0
+    
+    2. Initialize git submodules (REQUIRED for C++ generation):
+       git submodule update --init --recursive
+       
+    3. Verify nanopb submodule exists:
+       ls ../../proto/thirdparty/nanopb/generator/nanopb_generator.py
+       
+Common Issues:
+    - "nanopb_generator.py not found" → Run git submodule update --init --recursive
+    - "grpcio-tools not found" → Activate virtual environment or pip install grpcio-tools
 """
 
-import os
 import sys
 import shutil
 import filecmp
+import argparse
+import subprocess
 from pathlib import Path
+
+def cleanup_old_backups(backup_base_path, keep_count=3):
+    """Remove old backup directories, keeping only the latest N."""
+    if not backup_base_path.parent.exists():
+        return
+        
+    backup_pattern = f"{backup_base_path.name}*"
+    backups = sorted(
+        backup_base_path.parent.glob(backup_pattern), 
+        key=lambda p: p.stat().st_mtime if p.exists() else 0,
+        reverse=True
+    )
+    
+    for old_backup in backups[keep_count:]:
+        if old_backup.is_dir():
+            shutil.rmtree(old_backup)
+            print(f"🗑️ Removed old backup: {old_backup.name}")
 
 def check_grpcio_tools():
     """Check if grpcio-tools is available for Python-only protoc."""
     try:
-        from grpc_tools import protoc
+        import grpc_tools.protoc  # noqa: F401
         print("✅ Found grpcio-tools (Python protoc)")
         return True
     except ImportError:
@@ -74,6 +116,9 @@ def generate_protobuf():
             shutil.rmtree(backup_path)
         shutil.copytree(output_path, backup_path)
         print(f"📁 Backed up existing files to: {backup_path}")
+        
+        # Clean up old backups
+        cleanup_old_backups(backup_path)
     
     # Create output directory
     output_path.mkdir(parents=True, exist_ok=True)
@@ -142,7 +187,7 @@ def generate_protobuf():
         if nanopb_pb2_source.exists():
             nanopb_pb2_dest = output_path / "nanopb_pb2.py"
             shutil.copy2(nanopb_pb2_source, nanopb_pb2_dest)
-            print(f"✅ Copied nanopb_pb2.py")
+            print("✅ Copied nanopb_pb2.py")
         else:
             print("⚠️  nanopb_pb2.py not found, skipping")
     
@@ -212,20 +257,164 @@ def generate_protobuf():
     for pb_file in generated_files:
         print(f"  - {pb_file.name}")
     
-    print(f"\nTo use in your code:")
-    print(f"  from smartknob.proto_gen import smartknob_pb2, settings_pb2")
+    print("\nTo use in your code:")
+    print("  from smartknob.proto_gen import smartknob_pb2, settings_pb2")
+    
+    return True
+
+def generate_cpp_protobuf():
+    """
+    Generate C++ nanopb protobuf files for firmware.
+    
+    Creates .pb.h and .pb.c files in firmware/src/proto/proto_gen/
+    using the nanopb generator from the git submodule.
+    
+    Requires:
+        - nanopb submodule checked out at ../../proto/thirdparty/nanopb/
+        - Python 3.6+
+        
+    Generates:
+        - smartknob.pb.h/c: Main protocol with AppComponent support
+        - settings.pb.h/c: Settings protocol messages
+    """
+    print("\n🔧 Generating C++ nanopb files...")
+    print("\nSTARTING C++ NANOPB GENERATION")
+    print("="*60)
+    
+    # Get paths
+    script_dir = Path(__file__).parent.absolute()
+    workspace_root = script_dir.parent.parent
+    proto_dir = workspace_root / "proto"
+    nanopb_dir = proto_dir / "thirdparty" / "nanopb"
+    firmware_proto_dir = workspace_root / "firmware" / "src" / "proto" / "proto_gen"
+    
+    print(f"Script dir: {script_dir}")
+    print(f"Workspace root: {workspace_root}")
+    print(f"Proto dir: {proto_dir}")
+    print(f"Nanopb dir: {nanopb_dir}")
+    print(f"Output dir: {firmware_proto_dir}")
+    
+    # Verify nanopb is available
+    if not nanopb_dir.exists():
+        print(f"❌ Nanopb directory not found: {nanopb_dir}")
+        print("   Please ensure the nanopb submodule is checked out:")
+        print("   git submodule update --init --recursive")
+        return False
+    
+    nanopb_generator = nanopb_dir / "generator" / "nanopb_generator.py"
+    if not nanopb_generator.exists():
+        print(f"❌ Nanopb generator not found: {nanopb_generator}")
+        return False
+    
+    # Verify proto files exist
+    proto_files = ["smartknob.proto", "settings.proto"]
+    for proto_file in proto_files:
+        proto_path = proto_dir / proto_file
+        if not proto_path.exists():
+            print(f"❌ Proto file not found: {proto_path}")
+            return False
+        print(f"✅ Found: {proto_file}")
+    
+    # Create output directory
+    firmware_proto_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate C++ files for each proto
+    generated_files = []
+    
+    for proto_file in proto_files:
+        print(f"\n📦 Generating C++ files for {proto_file}...")
+        
+        # Build nanopb generator command
+        cmd = [
+            sys.executable,
+            str(nanopb_generator),
+            f"--proto-path={proto_dir}",
+            f"--proto-path={nanopb_dir}/generator/proto",
+            f"--output-dir={firmware_proto_dir}",
+            str(proto_dir / proto_file)
+        ]
+        
+        print(f"Running: {' '.join(cmd)}")
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            print(f"✅ Generated C++ files for {proto_file}")
+            if result.stdout:
+                print(f"   Output: {result.stdout}")
+                
+            # Track generated files
+            base_name = proto_file.replace('.proto', '')
+            generated_files.extend([
+                f"{base_name}.pb.h",
+                f"{base_name}.pb.c"
+            ])
+            
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Failed to generate C++ files for {proto_file}")
+            print(f"   Error: {e.stderr}")
+            return False
+        except Exception as e:
+            print(f"❌ Unexpected error generating {proto_file}: {e}")
+            return False
+    
+    # Verify generated files
+    print("\n🔍 Verifying generated files...")
+    for file_name in generated_files:
+        file_path = firmware_proto_dir / file_name
+        if file_path.exists():
+            print(f"✅ {file_name}")
+        else:
+            print(f"❌ Missing: {file_name}")
+            return False
+    
+    print("\nC++ NANOPB GENERATION COMPLETE")
+    print("="*60)
+    print(f"Generated files in: {firmware_proto_dir}")
+    for file_name in generated_files:
+        print(f"  - {file_name}")
+    
+    print("\nTo use in your C++ code:")
+    print("  #include \"smartknob.pb.h\"")
+    print("  #include \"settings.pb.h\"")
     
     return True
 
 def main():
     """Main function."""
-    print("SmartKnob Protobuf Generator (Python-Only)")
+    parser = argparse.ArgumentParser(description="SmartKnob Protobuf Generator")
+    parser.add_argument("--python", action="store_true", help="Generate Python files only")
+    parser.add_argument("--cpp", action="store_true", help="Generate C++ files only")
+    parser.add_argument("--all", action="store_true", help="Generate both Python and C++ files")
+    
+    args = parser.parse_args()
+    
+    # Default to Python only if no flags specified
+    if not (args.python or args.cpp or args.all):
+        args.python = True
+    
+    print("SmartKnob Protobuf Generator")
     print("="*50)
     
-    if not generate_protobuf():
+    success = True
+    
+    if args.python or args.all:
+        print("🐍 Generating Python protobuf files...")
+        if not generate_protobuf():
+            success = False
+    
+    if args.cpp or args.all:
+        print("🔧 Generating C++ nanopb files...")
+        if not generate_cpp_protobuf():
+            success = False
+    
+    if not success:
         sys.exit(1)
     
     print("\n🎉 All done! Protobuf files are ready to use.")
+    print("\n📋 Next steps:")
+    print("   1. Test Python components: cd .. && python examples/test_component_messages.py")
+    print("   2. Build firmware: cd ../../firmware && platformio run")
+    print("   3. Flash & test: platformio upload && platformio device monitor")
 
 if __name__ == "__main__":
     main()
