@@ -106,13 +106,20 @@ class SmartKnobProtocol:
             switch_to_protobuf: Send 'q' command to switch to protobuf mode
         """
         try:
-            # Open serial port with timeout
-            self.serial = serial.Serial(
-                port=self.port, 
-                baudrate=self.baud, 
-                timeout=5.0  # 5-second read timeout
-            )
-            logger.info(f"Opened {self.port} at {self.baud} baud")
+            # Create serial object without opening the port yet
+            self.serial = serial.Serial()
+            self.serial.port = self.port
+            self.serial.baudrate = self.baud
+            self.serial.timeout = 5.0  # 5-second read timeout
+            
+            # Set DTR/RTS to False BEFORE opening to prevent initial reset
+            self.serial.dtr = False  # Don't assert DTR (Data Terminal Ready)
+            self.serial.rts = False  # Don't assert RTS (Request To Send)
+            
+            # Now open the port with DTR/RTS already configured
+            self.serial.open()
+            
+            logger.info(f"Opened {self.port} at {self.baud} baud (no auto-reset)")
             
             # Switch to protobuf mode if requested
             if switch_to_protobuf:
@@ -130,14 +137,23 @@ class SmartKnobProtocol:
             raise
     
     async def stop(self):
-        """Stop the async protocol and cleanup resources."""
+        """Stop the async protocol and cleanup resources without triggering ESP32 reset."""
         logger.info("Stopping SmartKnobProtocol")
         self.running = False
         self.port_available = False
         
         if self.serial and self.serial.is_open:
+            # Ensure DTR/RTS don't change state to prevent ESP32 reset
+            self.serial.dtr = False
+            self.serial.rts = False
+            
+            # Brief delay to let ESP32 finish processing any pending data
+            await anyio.sleep(0.1)
+            
+            # Close the port gracefully
             self.serial.close()
             self.serial = None
+            logger.info("Serial port closed without triggering ESP32 reset")
         
         logger.info("SmartKnobProtocol stopped")
     
