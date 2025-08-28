@@ -36,7 +36,9 @@ RootTask::RootTask(
                                                                                                                                                                        auto_broadcast_enabled_(false),
                                                                                                                                                                        position_change_threshold_(0.1f),
                                                                                                                                                                        max_broadcast_interval_(100),
-                                                                                                                                                                       last_broadcast_time_(0)
+                                                                                                                                                                       last_broadcast_time_(0),
+                                                                                                                                                                       component_manager_(nullptr),
+                                                                                                                                                                       component_mode_(false)
 {
 #if SK_DISPLAY
     assert(display_task != nullptr);
@@ -56,16 +58,48 @@ RootTask::RootTask(
 
     mutex_ = xSemaphoreCreateMutex();
     assert(mutex_ != NULL);
+
+    // Initialize component manager
+    QueueHandle_t motor_queue = nullptr; // Will be implemented later when we integrate with task queues
+    QueueHandle_t display_queue = nullptr;
+    QueueHandle_t led_queue = nullptr;
+
+    // Create ComponentManager now that logging issues are resolved
+    component_manager_ = new ComponentManager(motor_queue, display_queue, led_queue, mutex_);
+    // Note: No assert here - avoid any potential logging during global constructor phase
 }
 
 RootTask::~RootTask()
 {
+    // Clean up component manager
+    if (component_manager_)
+    {
+        delete component_manager_;
+        component_manager_ = nullptr;
+    }
+
     vSemaphoreDelete(mutex_);
 }
 
 void RootTask::run()
 {
     uint8_t task_started_at = millis();
+
+    // Build version and timestamp for debugging
+    LOGI("=== SMARTKNOB FIRMWARE STARTUP ===");
+    LOGI("Build date: %s %s", __DATE__, __TIME__);
+    LOGI("Component system enabled: ComponentManager integration");
+    LOGI("RootTask: Starting run() method at %d ms", task_started_at);
+
+    // Verify ComponentManager was created successfully now that logging is available
+    if (component_manager_ == nullptr)
+    {
+        LOGE("RootTask: ComponentManager creation failed!");
+    }
+    else
+    {
+        LOGI("RootTask: ComponentManager created successfully");
+    }
 
     motor_task_.addListener(knob_state_queue_);
 
@@ -77,6 +111,25 @@ void RootTask::run()
 
     serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_request_state_tag, [this](PB_ToSmartknob to_smartknob)
                                                    { sendCurrentKnobState(); });
+
+    // Component system protocol handler
+    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_app_component_tag, [this](PB_ToSmartknob to_smartknob)
+                                                   {
+                                                       LOGI("RootTask: Received app_component message");
+                                                       bool success = component_manager_->createComponent(to_smartknob.payload.app_component);
+                                                       if (success)
+                                                       {
+                                                           // Switch to component mode and activate the new component
+                                                           component_mode_ = true;
+                                                           component_manager_->setActiveComponent(to_smartknob.payload.app_component.component_id);
+                                                           LOGI("RootTask: Switched to component mode, activated '%s'", to_smartknob.payload.app_component.component_id);
+                                                       }
+                                                       else
+                                                       {
+                                                           LOGE("RootTask: Failed to create component '%s'", to_smartknob.payload.app_component.component_id);
+                                                       }
+                                                       // Send acknowledgment (TODO: implement proper ack sending)
+                                                   });
 
     serial_protocol_protobuf_->registerCommandCallback(PB_SmartKnobCommand_MOTOR_CALIBRATE, [this]()
                                                        { motor_task_.runCalibration(); });
@@ -198,7 +251,7 @@ void RootTask::run()
         // Periodic debug message every 10 seconds (assuming 10ms loop delay)
         if (debug_counter % 1000 == 0)
         {
-            //LOGI("=== DEBUG: Main loop running, count=%u ===", debug_counter);
+            // LOGI("=== DEBUG: Main loop running, count=%u ===", debug_counter);
         }
         if (xQueueReceive(trigger_motor_calibration_, &trigger_motor_calibration_event_, 0) == pdTRUE)
         {
@@ -227,7 +280,7 @@ void RootTask::run()
         // Network connectivity removed for serial-only mode
 
         if (xQueueReceive(app_sync_queue_, &apps_, 0) == pdTRUE)
-        {            
+        {
             // Does nothing currently. MQTT functionality removed for serial-only mode
         }
 
@@ -254,8 +307,27 @@ void RootTask::run()
             currentSubPosition = roundedNewPosition;
             app_state.motor_state = latest_state_;
             app_state.os_mode_state = configuration_->getOSConfiguration()->mode;
-            // With simplified OSMode, always update apps
-            entity_state_update_to_send = display_task_->getApps()->update(app_state);
+            
+            // COMPONENT SYSTEM INTEGRATION: Check if we have an active component
+            if (component_manager_ && component_manager_->getActiveComponent()) {
+                // Route input to ComponentManager instead of traditional apps
+                component_manager_->handleKnobInput(latest_state_);
+                component_manager_->renderActiveComponent();
+                
+                // For now, create a minimal EntityStateUpdate for component mode
+                // TODO: Components should generate proper EntityStateUpdate
+                entity_state_update_to_send = EntityStateUpdate{};
+                entity_state_update_to_send.play_haptic = false; // Components handle their own haptics
+                
+                // Log component activity for debugging
+                static uint32_t component_log_counter = 0;
+                if (++component_log_counter % 100 == 0) { // Log every second (10ms * 100)
+                    LOGI("Component mode active: pos=%.3f", latest_state_.sub_position_unit);
+                }
+            } else {
+                // Traditional app system (fallback when no component is active)
+                entity_state_update_to_send = display_task_->getApps()->update(app_state);
+            }
 
 #if SK_ALS
             if (settings_.screen.dim)

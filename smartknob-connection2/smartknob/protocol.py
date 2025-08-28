@@ -28,6 +28,42 @@ logger = logging.getLogger(__name__)
 
 PROTOBUF_PROTOCOL_VERSION = 1
 RETRY_TIMEOUT_MS = 250  # 250ms retry timeout
+
+def reset_esp32(port: str, baud: int = 921600) -> bool:
+    """
+    Reset ESP32 by toggling DTR and RTS lines.
+    
+    Args:
+        port: Serial port (e.g., 'COM9', '/dev/ttyUSB0')
+        baud: Baud rate (default: 921600)
+        
+    Returns:
+        True if reset successful, False otherwise
+    """
+    logger.info(f"Resetting ESP32 on {port}...")
+    try:
+        # Open serial connection with DTR/RTS control
+        ser = serial.Serial(port, baud, timeout=1)
+        
+        # ESP32 reset sequence: DTR low, RTS high, then release
+        ser.dtr = False  # DTR low
+        ser.rts = True   # RTS high (active)
+        time.sleep(0.1)  # Hold for 100ms
+        
+        ser.rts = False  # RTS low (inactive) - releases reset
+        time.sleep(0.1)  # Brief delay
+        
+        ser.close()
+        
+        # Wait for ESP32 to boot
+        logger.info("Waiting for ESP32 to boot...")
+        time.sleep(2.0)  # ESP32 boot time
+        logger.info("Reset complete")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Reset failed: {e}")
+        return False
 MAX_RETRIES = 10
 MAX_QUEUE_SIZE = 10
 
@@ -66,7 +102,7 @@ class SmartKnobProtocol:
     - Responsive to Ctrl-C
     """
     
-    def __init__(self, port: str, baud: int = 921600, on_message: Optional[Callable] = None):
+    def __init__(self, port: str, baud: int = 921600, on_message: Optional[Callable] = None, auto_reset: bool = False):
         """
         Initialize async protocol handler.
         
@@ -74,9 +110,11 @@ class SmartKnobProtocol:
             port: Serial port name
             baud: Baud rate (default: 921600)
             on_message: Callback for received messages
+            auto_reset: If True, reset ESP32 before connecting (default: False)
         """
         self.port = port
         self.baud = baud
+        self.auto_reset = auto_reset
         self.on_message = on_message or (lambda msg: None)
         
         # Protocol state
@@ -120,6 +158,17 @@ class SmartKnobProtocol:
             self.serial.open()
             
             logger.info(f"Opened {self.port} at {self.baud} baud (no auto-reset)")
+            
+            # Reset ESP32 if requested
+            if self.auto_reset:
+                logger.info("Performing ESP32 reset...")
+                # Use existing serial connection for reset
+                self.serial.dtr = False
+                self.serial.rts = True
+                await anyio.sleep(0.1)
+                self.serial.rts = False
+                await anyio.sleep(1.0)  # Give ESP32 time to boot
+                logger.info("ESP32 reset complete")
             
             # Switch to protobuf mode if requested
             if switch_to_protobuf:
@@ -423,16 +472,18 @@ class SmartKnobConnection:
     Provides a clean async interface for connecting to and communicating with SmartKnob devices.
     """
     
-    def __init__(self, port: str, baud: int = 921600):
+    def __init__(self, port: str, baud: int = 921600, auto_reset: bool = False):
         """
         Initialize connection.
         
         Args:
             port: Serial port (e.g., 'COM9', '/dev/ttyUSB0')
             baud: Baud rate (default: 921600)
+            auto_reset: If True, reset ESP32 before connecting (default: False)
         """
         self.port = port
         self.baud = baud
+        self.auto_reset = auto_reset
         self.protocol = None
         self.connected = False
         
@@ -447,7 +498,7 @@ class SmartKnobConnection:
             True if connection successful
         """
         try:
-            self.protocol = SmartKnobProtocol(self.port, self.baud)
+            self.protocol = SmartKnobProtocol(self.port, self.baud, auto_reset=self.auto_reset)
             await self.protocol.start(switch_to_protobuf)
             self.connected = True
             
