@@ -112,7 +112,10 @@ void RootTask::run()
                                                        {
                                                            // Switch to component mode and activate the new component
                                                            component_mode_ = true;
-                                                           component_manager_->setActiveComponent(to_smartknob.payload.app_component.component_id);
+                                                           if (component_manager_->setActiveComponent(to_smartknob.payload.app_component.component_id)) {
+                                                               // setActiveComponent now calls render() internally (like Apps::setActive)
+                                                               component_manager_->triggerMotorConfigUpdate();  // Like DisplayTask::enableDemo
+                                                           }
                                                            LOGI("RootTask: Switched to component mode, activated '%s'", to_smartknob.payload.app_component.component_id);
                                                        }
                                                        else

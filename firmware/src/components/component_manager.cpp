@@ -2,14 +2,10 @@
 #include "toggle/toggle_component.h"
 #include "../util.h"
 #include <logging.h>
-#include <string.h>
 
-ComponentManager::ComponentManager(
-    SemaphoreHandle_t mutex) : mutex_(mutex),
-                               motor_notifier_(nullptr),
-                               active_component_(nullptr)
+ComponentManager::ComponentManager(SemaphoreHandle_t mutex) : screen_mutex_(mutex)
 {
-    LOGI("ComponentManager: Initialized with App-based architecture");
+    component_mutex_ = xSemaphoreCreateMutex();
 }
 
 ComponentManager::~ComponentManager()
@@ -17,10 +13,73 @@ ComponentManager::~ComponentManager()
     // Deactivate current component
     deactivateAll();
 
-    // Clear all components (unique_ptr will auto-delete)
+    // Clear all components (shared_ptr will auto-delete)
     components_.clear();
 
     // Note: Don't use LOGI here - object might be destroyed during global cleanup
+}
+
+void ComponentManager::deactivateAll()
+{
+    if (active_component_)
+    {
+        // Apps don't have deactivate method, just clear reference
+        active_component_ = nullptr;
+        LOGI("ComponentManager: All components deactivated");
+    }
+}
+
+void ComponentManager::add(const std::string &id, std::shared_ptr<Component> component)
+{
+    SemaphoreGuard lock(component_mutex_);
+    components_.insert(std::make_pair(id, component));
+}
+
+void ComponentManager::clear()
+{
+    SemaphoreGuard lock(component_mutex_);
+    components_.clear();
+}
+
+EntityStateUpdate ComponentManager::update(AppState state)
+{
+    // TODO: update with AppState
+    SemaphoreGuard lock(component_mutex_);
+    EntityStateUpdate new_state_update;
+
+    if (active_component_ != nullptr)
+    {
+        // Only send state updates to component using config with same identifier.
+        if (strcmp(state.motor_state.config.id, active_component_->app_id) == 0)
+        {
+            new_state_update = active_component_->updateStateFromKnob(state.motor_state);
+            active_component_->updateStateFromSystem(state);
+        }
+    }
+
+    return new_state_update;
+}
+
+void ComponentManager::render()
+{
+    if (active_component_) {
+        active_component_->render();
+    }
+};
+
+bool ComponentManager::setActiveComponent(const std::string &component_id)
+{
+    SemaphoreGuard lock(component_mutex_);
+    
+    auto it = components_.find(component_id);
+    if (it == components_.end()) {
+        LOGW("Component not found: %s", component_id.c_str());
+        return false;
+    }
+    
+    active_component_ = it->second;
+    render();  // CRITICAL: Apps pattern - always call render when setting active
+    return true;
 }
 
 bool ComponentManager::createComponent(const PB_AppComponent &config)
@@ -65,155 +124,105 @@ bool ComponentManager::createComponent(const PB_AppComponent &config)
     }
     LOGI("ComponentManager: Component '%s' created and configured in constructor", config.component_id);
 
-    // No need to call configure() since it's done in constructor (like SwitchApp)
-    LOGI("ComponentManager: Component '%s' configured successfully", config.component_id); // Store the component
+    // Store the component
     components_[component_id] = std::move(component);
 
     // Set motor notifier if available (like Apps do)
-    if (motor_notifier_)
+    if (motor_notifier)
     {
-        components_[component_id]->setMotorNotifier(motor_notifier_);
+        components_[component_id]->setMotorNotifier(motor_notifier);
     }
 
     LOGI("ComponentManager: Component '%s' created successfully", config.component_id);
     return true;
 }
 
-void ComponentManager::setMotorNotifier(MotorNotifier *motor_notifier)
+bool ComponentManager::destroyComponent(const std::string &component_id)
 {
-    motor_notifier_ = motor_notifier;
-
-    // Set motor notifier on all existing components
-    for (auto &pair : components_)
-    {
-        pair.second->setMotorNotifier(motor_notifier_);
-    }
-
-    LOGI("ComponentManager: Motor notifier set for %zu components", components_.size());
-}
-
-bool ComponentManager::destroyComponent(const char *component_id)
-{
-    std::string id(component_id);
-    auto it = components_.find(id);
+    auto it = components_.find(component_id);
 
     if (it == components_.end())
     {
-        LOGW("ComponentManager: Component '%s' not found for destruction", component_id);
+        LOGW("ComponentManager: Component '%s' not found for destruction", component_id.c_str());
         return false;
     }
 
     // If this is the active component, deactivate it
-    if (active_component_ == it->second.get())
+    if (active_component_ == it->second)
     {
         active_component_ = nullptr; // Just clear the reference (Apps don't have deactivate)
     }
 
-    // Remove from map (unique_ptr will auto-delete)
+    // Remove from map (shared_ptr will auto-delete)
     components_.erase(it);
 
-    LOGI("ComponentManager: Component '%s' destroyed", component_id);
+    LOGI("ComponentManager: Component '%s' destroyed", component_id.c_str());
     return true;
 }
 
-Component *ComponentManager::getComponent(const char *component_id)
+void ComponentManager::setMotorNotifier(MotorNotifier *motor_notifier)
 {
-    std::string id(component_id);
-    auto it = components_.find(id);
+    this->motor_notifier = motor_notifier;
 
-    if (it == components_.end())
+    std::map<std::string, std::shared_ptr<Component>>::iterator it;
+    for (it = components_.begin(); it != components_.end(); it++)
     {
-        return nullptr;
+        it->second->setMotorNotifier(motor_notifier);
     }
-
-    return it->second.get();
 }
 
-bool ComponentManager::setActiveComponent(const char *component_id)
+void ComponentManager::triggerMotorConfigUpdate()
 {
-    Component *component = getComponent(component_id);
-    if (!component)
+    if (this->motor_notifier != nullptr)
     {
-        LOGE("ComponentManager: Cannot activate unknown component '%s'", component_id);
-        return false;
+        if (active_component_ != nullptr)
+        {
+            motor_notifier->requestUpdate(active_component_->getMotorConfig());
+        }
+        else
+        {
+            motor_notifier->requestUpdate(blocked_motor_config);
+            LOGW("No active component");
+        }
     }
-
-    // Deactivate current component
-    if (active_component_)
+    else
     {
-        // Apps don't have deactivate method, just clear reference
+        LOGW("Motor_notifier is not set");
     }
-
-    // Activate new component
-    active_component_ = component;
-    // Apps don't have activate method, they're active when set as active_component_
-
-    // Trigger motor config update - like DisplayTask::enableDemo() does for Apps
-    if (active_component_) {
-        LOGI("ComponentManager: Triggering motor config update for component '%s'", component_id);
-        active_component_->triggerMotorConfigUpdate();
-    }
-
-    LOGI("ComponentManager: Component '%s' activated", component_id);
-    return true;
 }
 
-Component *ComponentManager::getActiveComponent()
+// ComponentManager doesn't need handleNavigationEvent - components use protobuf control
+
+std::shared_ptr<Component> ComponentManager::find(uint8_t id)
+{
+    // Keep for compatibility but likely unused
+    return nullptr;
+}
+
+std::shared_ptr<Component> ComponentManager::find(const std::string &component_id)
+{
+    std::map<std::string, std::shared_ptr<Component>>::iterator it;
+    for (it = components_.begin(); it != components_.end(); it++)
+    {
+        if (it->first == component_id)
+        {
+            return it->second;
+        }
+    }
+    return nullptr;
+}
+
+std::shared_ptr<Component> ComponentManager::getActiveComponent()
 {
     return active_component_;
 }
 
-void ComponentManager::deactivateAll()
+void ComponentManager::setOSConfigNotifier(OSConfigNotifier *os_config_notifier)
 {
-    if (active_component_)
-    {
-        // Apps don't have deactivate method, just clear reference
-        active_component_ = nullptr;
-        LOGI("ComponentManager: All components deactivated");
-    }
+    os_config_notifier_ = os_config_notifier;
 }
 
-EntityStateUpdate ComponentManager::update(AppState state)
-{
-    if (active_component_)
-    {
-        // Call the component's updateStateFromKnob method (inherited from App)
-        EntityStateUpdate entity_update = active_component_->updateStateFromKnob(state.motor_state);
-
-        // Render the component (inherited from App)
-        active_component_->render();
-
-        return entity_update;
-    }
-
-    return EntityStateUpdate{};
-}
-
-size_t ComponentManager::getComponentCount() const
-{
-    return components_.size();
-}
-
-void ComponentManager::getComponentIds(char *buffer, size_t buffer_size) const
-{
-    if (buffer_size == 0)
-        return;
-
-    buffer[0] = '\0'; // Start with empty string
-
-    bool first = true;
-    for (const auto &pair : components_)
-    {
-        if (!first)
-        {
-            strncat(buffer, ", ", buffer_size - strlen(buffer) - 1);
-        }
-        strncat(buffer, pair.first.c_str(), buffer_size - strlen(buffer) - 1);
-        first = false;
-    }
-}
-
-std::unique_ptr<Component> ComponentManager::createComponentByType(
+std::shared_ptr<Component> ComponentManager::createComponentByType(
     PB_ComponentType type,
     const PB_AppComponent &config)
 {
@@ -221,9 +230,9 @@ std::unique_ptr<Component> ComponentManager::createComponentByType(
     {
     case PB_ComponentType_TOGGLE:
         LOGI("ComponentManager: Creating ToggleComponent '%s' with full config", config.component_id);
-        return std::unique_ptr<Component>(new ToggleComponent(
-            mutex_,  // ✅ Pass mutex to App constructor
-            config   // ✅ Pass full config for constructor-time configuration
+        return std::shared_ptr<Component>(new ToggleComponent(
+            screen_mutex_, // Pass mutex to App constructor
+            config  // Pass full config for constructor-time configuration
             ));
 
     default:
