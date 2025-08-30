@@ -148,6 +148,12 @@ bool ComponentManager::setActiveComponent(const char *component_id)
     active_component_ = component;
     // Apps don't have activate method, they're active when set as active_component_
 
+    // Trigger motor config update - like DisplayTask::enableDemo() does for Apps
+    if (active_component_) {
+        LOGI("ComponentManager: Triggering motor config update for component '%s'", component_id);
+        active_component_->triggerMotorConfigUpdate();
+    }
+
     LOGI("ComponentManager: Component '%s' activated", component_id);
     return true;
 }

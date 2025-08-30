@@ -42,7 +42,7 @@ ToggleComponent::ToggleComponent(
         1,                                   // max_position
         60 * PI / 180,                       // position_width_radians
         config_.detent_strength_unit,        // ⭐ USER CONFIGURED
-        config_.detent_strength_unit,        // ⭐ USE SAME FOR ENDSTOP (like SwitchApp)
+        1,                                   // endstop_strength_unit (like SwitchApp - fixed value)
         config_.snap_point,                  // ⭐ USER CONFIGURED
         "",                                  // id
         0,                                   // id_nonce
@@ -51,6 +51,18 @@ ToggleComponent::ToggleComponent(
         current_position == 0 ? config_.off_led_hue : config_.on_led_hue, // ⭐ USER CONFIGURED LED
     };
     strncpy(motor_config.id, config.component_id, sizeof(motor_config.id) - 1);
+    
+    // Debug log motor configuration
+    LOGI("ToggleComponent '%s': Motor config - pos=%d, min=%d, max=%d, detent_strength=%f, endstop_strength=%f, snap_point=%f, detent_count=%d, led_hue=%d", 
+         config.component_id,
+         motor_config.position,
+         motor_config.min_position, 
+         motor_config.max_position,
+         motor_config.detent_strength_unit,
+         motor_config.endstop_strength_unit,
+         motor_config.snap_point,
+         motor_config.detent_positions_count,
+         motor_config.led_hue);
     
     // Initialize state buffer
     memset(state_buffer_, 0, sizeof(state_buffer_));
@@ -184,9 +196,8 @@ EntityStateUpdate ToggleComponent::updateStateFromKnob(PB_SmartKnobState state)
         
         last_position = current_position;
         
-        // Update LED hue
+        // Update LED hue (but don't trigger motor config update - that's only done during activation)
         motor_config.led_hue = current_position == 0 ? config_.off_led_hue : config_.on_led_hue;
-        triggerMotorConfigUpdate();
         
         LOGI("ToggleComponent '%s': State changed to %s", component_id_, 
              current_position > 0 ? "ON" : "OFF");
