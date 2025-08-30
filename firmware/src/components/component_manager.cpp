@@ -49,20 +49,11 @@ EntityStateUpdate ComponentManager::update(AppState state)
 
     if (active_component_ != nullptr)
     {
-        // 🔍 DEBUG: Log the ID comparison 
-        LOGI("ComponentManager: Checking motor config ID '%s' vs component app_id '%s'", 
-             state.motor_state.config.id, active_component_->app_id);
-             
         // Only send state updates to component using config with same identifier.
         if (strcmp(state.motor_state.config.id, active_component_->app_id) == 0)
         {
-            LOGI("ComponentManager: IDs match! Calling updateStateFromKnob");
             new_state_update = active_component_->updateStateFromKnob(state.motor_state);
             active_component_->updateStateFromSystem(state);
-        }
-        else
-        {
-            LOGI("ComponentManager: IDs don't match - skipping updateStateFromKnob");
         }
     }
 
