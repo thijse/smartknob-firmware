@@ -12,12 +12,13 @@ class ToggleComponent : public Component
 {
 public:
     /**
-     * Create toggle component using SwitchApp constructor pattern
+     * Create toggle component with full configuration (like SwitchApp)
+     * This eliminates the need for separate configure() step
      */
-    ToggleComponent(SemaphoreHandle_t mutex, const char *component_id);
+    ToggleComponent(SemaphoreHandle_t mutex, const PB_AppComponent &config);
 
     // ========== Component Interface ==========
-    bool configure(const PB_AppComponent &config) override;
+    bool configure(const PB_AppComponent &config) override { return true; } // No-op since config is done in constructor
     const char *getComponentType() const override { return "toggle"; }
     
     // ========== State Interface ==========
@@ -42,8 +43,9 @@ private:
     long last_updated_ms = 0;
     bool first_run = false;
     
-    // Component configuration
-    PB_ToggleConfig config_;
+    // Component configuration (set once in constructor)
+    PB_AppComponent component_config_;  // Full protobuf config for display_name etc.
+    PB_ToggleConfig config_;           // Toggle-specific config
     bool configured_ = false;
     
     // State buffer for getState()

@@ -120,12 +120,12 @@ private:
      * Create a component instance based on type.
      *
      * @param type Component type from protobuf enum
-     * @param component_id Unique ID for the component
+     * @param config Full component configuration from protobuf
      * @return New component instance, or nullptr on failure
      */
     std::unique_ptr<Component> createComponentByType(
         PB_ComponentType type,
-        const char *component_id);
+        const PB_AppComponent &config);
 
     // ========== State ==========
 

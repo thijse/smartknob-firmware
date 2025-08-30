@@ -5,47 +5,62 @@
 
 ToggleComponent::ToggleComponent(
     SemaphoreHandle_t mutex,
-    const char *component_id) : Component(mutex, component_id)
+    const PB_AppComponent &config) : Component(mutex, config.component_id)
 {
-    LOGI("ToggleComponent '%s': Constructor using SwitchApp pattern", component_id);
+    LOGI("ToggleComponent '%s': Constructor with full configuration (like SwitchApp)", config.component_id);
     
-    // Initialize with SwitchApp-style motor config
+    // Validate configuration first
+    if (config.type != PB_ComponentType_TOGGLE) {
+        LOGE("ToggleComponent: Invalid component type %d", config.type);
+        return;
+    }
+    
+    if (config.which_component_config != PB_AppComponent_toggle_tag) {
+        LOGE("ToggleComponent: Missing toggle configuration");
+        return;
+    }
+    
+    // Store the toggle configuration (like SwitchApp stores its parameters)
+    component_config_ = config;
+    config_ = config.component_config.toggle;
+    
+    // Debug: Log the configuration values we received
+    LOGI("ToggleComponent '%s': Config values - snap_point: %f, detent_strength: %f, off_label: '%s', on_label: '%s'", 
+         config.component_id, config_.snap_point, config_.detent_strength_unit, config_.off_label, config_.on_label);
+    configured_ = true;
+    
+    // Initialize position based on config (like SwitchApp)
+    current_position = config_.initial_state ? 1 : 0;
+    last_position = current_position;
+    
+    // Configure motor with user settings (like SwitchApp)
     motor_config = PB_SmartKnobConfig{
-        current_position,  // position
-        0,                 // sub_position_unit  
-        current_position,  // position_nonce
-        0,                 // min_position
-        1,                 // max_position
-        60 * PI / 180,     // position_width_radians (same as SwitchApp)
-        1,                 // detent_strength_unit
-        1,                 // endstop_strength_unit
-        0.55,              // snap_point (same as SwitchApp)
-        "",                // id
-        0,                 // id_nonce
-        {},                // detent_positions
-        0,                 // detent_positions_count
-        27,                // led_hue
+        current_position,                    // position (dynamic like SwitchApp)
+        0,                                   // sub_position_unit  
+        current_position,                    // position_nonce (dynamic like SwitchApp)
+        0,                                   // min_position
+        1,                                   // max_position
+        60 * PI / 180,                       // position_width_radians
+        config_.detent_strength_unit,        // ⭐ USER CONFIGURED
+        config_.detent_strength_unit,        // ⭐ USE SAME FOR ENDSTOP (like SwitchApp)
+        config_.snap_point,                  // ⭐ USER CONFIGURED
+        "",                                  // id
+        0,                                   // id_nonce
+        {},                                  // detent_positions
+        0,                                   // detent_positions_count (bounded mode)
+        current_position == 0 ? config_.off_led_hue : config_.on_led_hue, // ⭐ USER CONFIGURED LED
     };
-    strncpy(motor_config.id, component_id, sizeof(motor_config.id) - 1);
-    
-    // Set default toggle config
-    memset(&config_, 0, sizeof(config_));
-    strcpy(config_.off_label, "OFF");
-    strcpy(config_.on_label, "ON");
-    config_.snap_point = 0.55f;
-    config_.detent_strength_unit = 1.0f;
-    config_.off_led_hue = 0;   // Red
-    config_.on_led_hue = 120;  // Green
-    config_.initial_state = false;
+    strncpy(motor_config.id, config.component_id, sizeof(motor_config.id) - 1);
     
     // Initialize state buffer
     memset(state_buffer_, 0, sizeof(state_buffer_));
     
-    // Initialize screen using SwitchApp's proven pattern
-    LOGI("ToggleComponent '%s': Calling initScreen() from constructor", component_id);
+    // Initialize screen with user labels (like SwitchApp)
+    LOGI("ToggleComponent '%s': Calling initScreen() with user config", config.component_id);
     initScreen();
     
-    LOGI("ToggleComponent '%s': Constructor completed successfully", component_id);
+    LOGI("ToggleComponent '%s': Constructor completed - labels: '%s'/'%s', snap_point: %f", 
+         config.component_id, config_.off_label, config_.on_label, config_.snap_point);
 }
 
 void ToggleComponent::initScreen()
@@ -76,56 +91,25 @@ void ToggleComponent::initScreen()
     lv_obj_set_style_arc_width(arc_, 24, LV_PART_INDICATOR);
     lv_obj_set_style_pad_all(arc_, -5, LV_PART_KNOB);
     
-    // Create status label (like SwitchApp) - always use text not images
+    // Create status label with USER CONFIGURED labels (like SwitchApp)
     status_label = lv_label_create(screen);
-    lv_label_set_text(status_label, config_.off_label);
+    lv_label_set_text(status_label, current_position == 0 ? config_.off_label : config_.on_label);
     lv_obj_set_style_text_color(status_label, LV_COLOR_MAKE(0xFF, 0xFF, 0xFF), 0);
     lv_obj_center(status_label);
     
-    // Create component name label
+    // Set initial background color based on state
+    if (current_position == 0) {
+        lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x00, 0x00), 0);
+    } else {
+        lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x80, 0x00), 0);
+    }
+    
+    // Create component name label showing USER CONFIGURED display_name
     lv_obj_t *label = lv_label_create(screen);
-    lv_label_set_text(label, component_id_);
+    lv_label_set_text(label, component_config_.display_name);  // Use display_name from stored config
     lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -48);
     
     LOGI("ToggleComponent '%s': initScreen() completed successfully", component_id_);
-}
-
-bool ToggleComponent::configure(const PB_AppComponent &config)
-{
-    LOGI("ToggleComponent '%s': configure() called", component_id_);
-    
-    // Validate configuration
-    if (config.type != PB_ComponentType_TOGGLE) {
-        LOGE("ToggleComponent '%s': Invalid component type %d", component_id_, config.type);
-        return false;
-    }
-    
-    if (config.which_component_config != PB_AppComponent_toggle_tag) {
-        LOGE("ToggleComponent '%s': Missing toggle configuration", component_id_);
-        return false;
-    }
-    
-    // Store configuration
-    component_config_ = config;
-    config_ = config.component_config.toggle;
-    configured_ = true;
-    
-    // Update motor configuration with new settings
-    motor_config.snap_point = config_.snap_point;
-    motor_config.detent_strength_unit = config_.detent_strength_unit;
-    motor_config.led_hue = current_position == 0 ? config_.off_led_hue : config_.on_led_hue;
-    
-    // Update display with new labels (if screen is initialized)
-    if (status_label) {
-        SemaphoreGuard lock(mutex_);
-        lv_label_set_text(status_label, current_position == 0 ? config_.off_label : config_.on_label);
-    }
-    
-    // Trigger motor update
-    triggerMotorConfigUpdate();
-    
-    LOGI("ToggleComponent '%s': Configured successfully", component_id_);
-    return true;
 }
 
 EntityStateUpdate ToggleComponent::updateStateFromKnob(PB_SmartKnobState state)

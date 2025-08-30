@@ -57,22 +57,15 @@ bool ComponentManager::createComponent(const PB_AppComponent &config)
 
     // Create new component
     LOGI("ComponentManager: About to create component of type %d", config.type);
-    auto component = createComponentByType(config.type, config.component_id);
+    auto component = createComponentByType(config.type, config);
     if (!component)
     {
         LOGE("ComponentManager: Failed to create component of type %d", config.type);
         return false;
     }
-    LOGI("ComponentManager: Component created successfully, about to configure");
+    LOGI("ComponentManager: Component '%s' created and configured in constructor", config.component_id);
 
-    // Configure the component
-    LOGI("ComponentManager: Calling configure() on component '%s'", config.component_id);
-    bool success = component->configure(config);
-    if (!success)
-    {
-        LOGE("ComponentManager: Failed to configure component '%s'", config.component_id);
-        return false;
-    }
+    // No need to call configure() since it's done in constructor (like SwitchApp)
     LOGI("ComponentManager: Component '%s' configured successfully", config.component_id); // Store the component
     components_[component_id] = std::move(component);
 
@@ -216,15 +209,15 @@ void ComponentManager::getComponentIds(char *buffer, size_t buffer_size) const
 
 std::unique_ptr<Component> ComponentManager::createComponentByType(
     PB_ComponentType type,
-    const char *component_id)
+    const PB_AppComponent &config)
 {
     switch (type)
     {
     case PB_ComponentType_TOGGLE:
-        LOGI("ComponentManager: Creating ToggleComponent '%s'", component_id);
+        LOGI("ComponentManager: Creating ToggleComponent '%s' with full config", config.component_id);
         return std::unique_ptr<Component>(new ToggleComponent(
-            mutex_,      // ✅ Pass mutex to App constructor
-            component_id // ✅ Pass component ID
+            mutex_,  // ✅ Pass mutex to App constructor
+            config   // ✅ Pass full config for constructor-time configuration
             ));
 
     default:
