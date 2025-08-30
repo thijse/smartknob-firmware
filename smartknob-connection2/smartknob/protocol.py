@@ -102,7 +102,7 @@ class SmartKnobProtocol:
     - Responsive to Ctrl-C
     """
     
-    def __init__(self, port: str, baud: int = 921600, on_message: Optional[Callable] = None, auto_reset: bool = False):
+    def __init__(self, port: str, baud: int = 921600, on_message: Optional[Callable] = None, auto_reset: bool = False, on_raw_data: Optional[Callable] = None):
         """
         Initialize async protocol handler.
         
@@ -111,11 +111,13 @@ class SmartKnobProtocol:
             baud: Baud rate (default: 921600)
             on_message: Callback for received messages
             auto_reset: If True, reset ESP32 before connecting (default: False)
+            on_raw_data: Callback for raw serial data (bytes) - for debugging/logging
         """
         self.port = port
         self.baud = baud
         self.auto_reset = auto_reset
         self.on_message = on_message or (lambda msg: None)
+        self.on_raw_data = on_raw_data or (lambda data: None)  # Add raw data callback
         
         # Protocol state
         self.serial = None
@@ -296,6 +298,12 @@ class SmartKnobProtocol:
     
     async def _process_incoming_data(self, data: bytes):
         """Process incoming data, handling partial frames."""
+        # Call raw data callback first (for logging/debugging)
+        try:
+            self.on_raw_data(data)
+        except Exception as e:
+            logger.warning(f"Raw data callback error: {e}")
+        
         # Add to buffer
         self.incoming_buffer.extend(data)
         
@@ -472,7 +480,7 @@ class SmartKnobConnection:
     Provides a clean async interface for connecting to and communicating with SmartKnob devices.
     """
     
-    def __init__(self, port: str, baud: int = 921600, auto_reset: bool = False):
+    def __init__(self, port: str, baud: int = 921600, auto_reset: bool = False, on_raw_data: Optional[Callable] = None):
         """
         Initialize connection.
         
@@ -480,10 +488,12 @@ class SmartKnobConnection:
             port: Serial port (e.g., 'COM9', '/dev/ttyUSB0')
             baud: Baud rate (default: 921600)
             auto_reset: If True, reset ESP32 before connecting (default: False)
+            on_raw_data: Callback for raw serial data (bytes) - for debugging/logging
         """
         self.port = port
         self.baud = baud
         self.auto_reset = auto_reset
+        self.on_raw_data = on_raw_data
         self.protocol = None
         self.connected = False
         
@@ -498,7 +508,7 @@ class SmartKnobConnection:
             True if connection successful
         """
         try:
-            self.protocol = SmartKnobProtocol(self.port, self.baud, auto_reset=self.auto_reset)
+            self.protocol = SmartKnobProtocol(self.port, self.baud, auto_reset=self.auto_reset, on_raw_data=self.on_raw_data)
             await self.protocol.start(switch_to_protobuf)
             self.connected = True
             
@@ -523,6 +533,11 @@ class SmartKnobConnection:
         """Set callback for received messages."""
         if self.protocol:
             self.protocol.on_message = callback
+    
+    def set_raw_data_callback(self, callback: Callable):
+        """Set callback for raw serial data (for debugging/logging)."""
+        if self.protocol:
+            self.protocol.on_raw_data = callback
     
     async def send_command(self, command: int):
         """Send command to SmartKnob."""

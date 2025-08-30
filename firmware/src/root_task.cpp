@@ -58,15 +58,6 @@ RootTask::RootTask(
 
     mutex_ = xSemaphoreCreateMutex();
     assert(mutex_ != NULL);
-
-    // Initialize component manager
-    QueueHandle_t motor_queue = nullptr; // Will be implemented later when we integrate with task queues
-    QueueHandle_t display_queue = nullptr;
-    QueueHandle_t led_queue = nullptr;
-
-    // Create ComponentManager now that logging issues are resolved
-    component_manager_ = new ComponentManager(motor_queue, display_queue, led_queue, mutex_);
-    // Note: No assert here - avoid any potential logging during global constructor phase
 }
 
 RootTask::~RootTask()
@@ -216,6 +207,10 @@ void RootTask::run()
     display_task_->getApps()->setMotorNotifier(&motor_notifier);
     display_task_->getApps()->setOSConfigNotifier(&os_config_notifier_);
 
+    // Initialize component manager with App-based architecture
+    component_manager_ = new ComponentManager(mutex_);
+    component_manager_->setMotorNotifier(&motor_notifier); 
+    
     // TODO: move playhaptic to notifier? or other interface to just pass "possible" motor commands not entire object/class.
     reset_task_->setMotorTask(&motor_task_);
 
@@ -307,24 +302,23 @@ void RootTask::run()
             currentSubPosition = roundedNewPosition;
             app_state.motor_state = latest_state_;
             app_state.os_mode_state = configuration_->getOSConfiguration()->mode;
-            
+
             // COMPONENT SYSTEM INTEGRATION: Check if we have an active component
-            if (component_manager_ && component_manager_->getActiveComponent()) {
-                // Route input to ComponentManager instead of traditional apps
-                component_manager_->handleKnobInput(latest_state_);
-                component_manager_->renderActiveComponent();
-                
-                // For now, create a minimal EntityStateUpdate for component mode
-                // TODO: Components should generate proper EntityStateUpdate
-                entity_state_update_to_send = EntityStateUpdate{};
-                entity_state_update_to_send.play_haptic = false; // Components handle their own haptics
-                
+            if (component_manager_ && component_manager_->getActiveComponent())
+            {
+                // Route input to ComponentManager using Apps-like interface
+                entity_state_update_to_send = component_manager_->update(app_state);
+
+                // Components now handle their own haptics via App inheritance
                 // Log component activity for debugging
                 static uint32_t component_log_counter = 0;
-                if (++component_log_counter % 100 == 0) { // Log every second (10ms * 100)
+                if (++component_log_counter % 100 == 0)
+                { // Log every second (10ms * 100)
                     LOGI("Component mode active: pos=%.3f", latest_state_.sub_position_unit);
                 }
-            } else {
+            }
+            else
+            {
                 // Traditional app system (fallback when no component is active)
                 entity_state_update_to_send = display_task_->getApps()->update(app_state);
             }

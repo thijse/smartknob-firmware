@@ -107,8 +107,8 @@ private:
     // SerialProtocolProtobuf proto_protocol_;
 
     // Component system
-    ComponentManager* component_manager_;
-    bool component_mode_;  // true when using components, false when using traditional apps
+    ComponentManager *component_manager_;
+    bool component_mode_; // true when using components, false when using traditional apps
 
     uint32_t last_calib_state_sent_ = 0;
 

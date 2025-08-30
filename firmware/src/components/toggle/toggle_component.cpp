@@ -2,46 +2,98 @@
 #include "../../util.h"
 #include <logging.h>
 #include <string.h>
-#include <math.h>
-
-// Debouncing and timing constants
-#define DEBOUNCE_TIME_MS 50
-#define SNAP_THRESHOLD 0.1f
 
 ToggleComponent::ToggleComponent(
-    const char* component_id,
-    QueueHandle_t motor_task_queue,
-    QueueHandle_t display_task_queue,
-    QueueHandle_t led_ring_task_queue,
-    SemaphoreHandle_t mutex
-) : Component(component_id, motor_task_queue, display_task_queue, led_ring_task_queue, mutex),
-    current_state_(false),
-    last_knob_state_(false),
-    last_knob_position_(0.0f),
-    last_state_change_time_(0)
+    SemaphoreHandle_t mutex,
+    const char *component_id) : Component(mutex, component_id)
 {
-    // Initialize configuration to default values
+    LOGI("ToggleComponent '%s': Constructor using SwitchApp pattern", component_id);
+    
+    // Initialize with SwitchApp-style motor config
+    motor_config = PB_SmartKnobConfig{
+        current_position,  // position
+        0,                 // sub_position_unit  
+        current_position,  // position_nonce
+        0,                 // min_position
+        1,                 // max_position
+        60 * PI / 180,     // position_width_radians (same as SwitchApp)
+        1,                 // detent_strength_unit
+        1,                 // endstop_strength_unit
+        0.55,              // snap_point (same as SwitchApp)
+        "",                // id
+        0,                 // id_nonce
+        {},                // detent_positions
+        0,                 // detent_positions_count
+        27,                // led_hue
+    };
+    strncpy(motor_config.id, component_id, sizeof(motor_config.id) - 1);
+    
+    // Set default toggle config
     memset(&config_, 0, sizeof(config_));
-    
-    // Set sensible defaults
-    strcpy(config_.off_label, "Off");
-    strcpy(config_.on_label, "On");
-    config_.snap_point = 0.5f;           // 50% rotation to toggle
-    config_.snap_point_bias = 0.0f;      // Symmetric by default
-    config_.detent_strength_unit = 0.5f; // Medium haptic feedback
-    config_.off_led_hue = 0;             // Red when off
-    config_.on_led_hue = 120;            // Green when on
-    config_.initial_state = false;       // Start in off state
-    
-    current_state_ = config_.initial_state;
+    strcpy(config_.off_label, "OFF");
+    strcpy(config_.on_label, "ON");
+    config_.snap_point = 0.55f;
+    config_.detent_strength_unit = 1.0f;
+    config_.off_led_hue = 0;   // Red
+    config_.on_led_hue = 120;  // Green
+    config_.initial_state = false;
     
     // Initialize state buffer
     memset(state_buffer_, 0, sizeof(state_buffer_));
     
-    // Note: Don't use LOGI here - logging system may not be initialized during construction
+    // Initialize screen using SwitchApp's proven pattern
+    LOGI("ToggleComponent '%s': Calling initScreen() from constructor", component_id);
+    initScreen();
+    
+    LOGI("ToggleComponent '%s': Constructor completed successfully", component_id);
 }
 
-bool ToggleComponent::configure(const PB_AppComponent& config) {
+void ToggleComponent::initScreen()
+{
+    LOGI("ToggleComponent '%s': initScreen() using SwitchApp pattern", component_id_);
+    
+    // Use SwitchApp's proven LVGL initialization
+    if (screen == nullptr) {
+        LOGE("ToggleComponent '%s': screen is NULL!", component_id_);
+        return;
+    }
+    
+    SemaphoreGuard lock(mutex_);
+    
+    // Create arc (like SwitchApp)
+    arc_ = lv_arc_create(screen);
+    lv_obj_set_size(arc_, 210, 210);
+    lv_arc_set_rotation(arc_, 225);
+    lv_arc_set_bg_angles(arc_, 0, 90);
+    lv_arc_set_value(arc_, 0);
+    lv_obj_center(arc_);
+    
+    lv_obj_set_style_arc_opa(arc_, LV_OPA_0, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(arc_, dark_arc_bg, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(arc_, LV_COLOR_MAKE(0xFF, 0xFF, 0xFF), LV_PART_KNOB);
+    
+    lv_obj_set_style_arc_width(arc_, 24, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(arc_, 24, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_all(arc_, -5, LV_PART_KNOB);
+    
+    // Create status label (like SwitchApp) - always use text not images
+    status_label = lv_label_create(screen);
+    lv_label_set_text(status_label, config_.off_label);
+    lv_obj_set_style_text_color(status_label, LV_COLOR_MAKE(0xFF, 0xFF, 0xFF), 0);
+    lv_obj_center(status_label);
+    
+    // Create component name label
+    lv_obj_t *label = lv_label_create(screen);
+    lv_label_set_text(label, component_id_);
+    lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -48);
+    
+    LOGI("ToggleComponent '%s': initScreen() completed successfully", component_id_);
+}
+
+bool ToggleComponent::configure(const PB_AppComponent &config)
+{
+    LOGI("ToggleComponent '%s': configure() called", component_id_);
+    
     // Validate configuration
     if (config.type != PB_ComponentType_TOGGLE) {
         LOGE("ToggleComponent '%s': Invalid component type %d", component_id_, config.type);
@@ -53,90 +105,125 @@ bool ToggleComponent::configure(const PB_AppComponent& config) {
         return false;
     }
     
-    LOGI("ToggleComponent '%s': Configuring toggle", component_id_);
-    
-    // Store the complete component configuration
+    // Store configuration
     component_config_ = config;
     config_ = config.component_config.toggle;
+    configured_ = true;
     
-    // Validate and clamp configuration values
-    config_.snap_point = fmaxf(0.1f, fminf(1.0f, config_.snap_point));
-    config_.snap_point_bias = fmaxf(-1.0f, fminf(1.0f, config_.snap_point_bias));
-    config_.detent_strength_unit = fmaxf(0.0f, fminf(1.0f, config_.detent_strength_unit));
+    // Update motor configuration with new settings
+    motor_config.snap_point = config_.snap_point;
+    motor_config.detent_strength_unit = config_.detent_strength_unit;
+    motor_config.led_hue = current_position == 0 ? config_.off_led_hue : config_.on_led_hue;
     
-    // Clamp LED hue values to valid range
-    config_.off_led_hue = config_.off_led_hue % 360;
-    config_.on_led_hue = config_.on_led_hue % 360;
-    if (config_.off_led_hue < 0) config_.off_led_hue += 360;
-    if (config_.on_led_hue < 0) config_.on_led_hue += 360;
+    // Update display with new labels (if screen is initialized)
+    if (status_label) {
+        SemaphoreGuard lock(mutex_);
+        lv_label_set_text(status_label, current_position == 0 ? config_.off_label : config_.on_label);
+    }
     
-    // Set initial state
-    current_state_ = config_.initial_state;
-    last_knob_state_ = current_state_;
+    // Trigger motor update
+    triggerMotorConfigUpdate();
     
-    // Apply initial configuration
-    updateMotorConfig();
-    updateLEDs();
-    updateDisplay();
-    
-    LOGI("ToggleComponent '%s': Configured successfully (snap_point=%.2f, bias=%.2f)", 
-         component_id_, config_.snap_point, config_.snap_point_bias);
-    
+    LOGI("ToggleComponent '%s': Configured successfully", component_id_);
     return true;
 }
 
-void ToggleComponent::handleKnobInput(const PB_SmartKnobState& state) {
-    // Get current time for debouncing
-    uint32_t current_time = millis();
+EntityStateUpdate ToggleComponent::updateStateFromKnob(PB_SmartKnobState state)
+{
+    // Use SwitchApp's proven updateStateFromKnob implementation
+    EntityStateUpdate new_state;
     
-    // Skip if we're in debounce period
-    if (current_time - last_state_change_time_ < DEBOUNCE_TIME_MS) {
-        return;
-    }
+    current_position = state.current_position;
+    sub_position_unit = state.sub_position_unit * motor_config.position_width_radians;
     
-    // Store the current position
-    float knob_position = state.current_position;
+    // Update motor config for tracking
+    motor_config.position_nonce = current_position;
+    motor_config.position = current_position;
     
-    // Check if we should toggle state based on knob position
-    bool should_toggle = shouldToggleState(knob_position);
+    // Calculate velocity (like SwitchApp)
+    static float previous_sub_position_unit = 0.0f;
+    float vel = (sub_position_unit * 100 - previous_sub_position_unit * 100) / (millis() - last_updated_ms);
     
-    if (should_toggle && current_time - last_state_change_time_ >= DEBOUNCE_TIME_MS) {
-        // Toggle the state
-        changeState(!current_state_);
-        last_state_change_time_ = current_time;
-    }
-    
-    last_knob_position_ = knob_position;
-}
+    // Update arc display (like SwitchApp)
+    if (abs(vel) > 0.75f || current_position != last_position)
+    {
+        if (current_position == 0 && sub_position_unit < 0)
+        {
+            sub_position_unit = 0;
+        }
+        else if (current_position == 1 && sub_position_unit > 0)
+        {
+            sub_position_unit = 0;
+        }
 
-void ToggleComponent::handleButtonInput(bool pressed) {
-    if (pressed) {
-        // On button press, toggle the state
-        uint32_t current_time = millis();
-        if (current_time - last_state_change_time_ >= DEBOUNCE_TIME_MS) {
-            changeState(!current_state_);
-            last_state_change_time_ = current_time;
-            LOGI("ToggleComponent '%s': Button toggle to %s", 
-                 component_id_, current_state_ ? "ON" : "OFF");
+        SemaphoreGuard lock(mutex_);
+        if (current_position == 0)
+        {
+            lv_arc_set_value(arc_, abs(sub_position_unit) * 100);
+        }
+        else
+        {
+            lv_arc_set_value(arc_, 100 - abs(sub_position_unit) * 100);
         }
     }
+    else
+    {
+        if (current_position == 0)
+        {
+            lv_arc_set_value(arc_, 0);
+        }
+        else
+        {
+            lv_arc_set_value(arc_, 100);
+        }
+    }
+    
+    // Update display and LED on position change (like SwitchApp)
+    if (last_position != current_position && first_run) {
+        SemaphoreGuard lock(mutex_);
+        
+        if (current_position == 0) {
+            lv_label_set_text(status_label, config_.off_label);
+            lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x00, 0x00), 0);
+            lv_obj_set_style_arc_color(arc_, dark_arc_bg, LV_PART_MAIN);
+        } else {
+            lv_label_set_text(status_label, config_.on_label);
+            lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x80, 0x00), 0);
+            lv_obj_set_style_arc_color(arc_, lv_color_mix(dark_arc_bg, LV_COLOR_MAKE(0x00, 0x80, 0x00), 128), LV_PART_MAIN);
+        }
+        
+        // Create state update
+        sprintf(new_state.app_id, "%s", component_id_);
+        sprintf(new_state.entity_id, "%s", component_id_);
+        sprintf(new_state.state, "{\"state\": %s}", current_position > 0 ? "true" : "false");
+        new_state.changed = true;
+        
+        last_position = current_position;
+        
+        // Update LED hue
+        motor_config.led_hue = current_position == 0 ? config_.off_led_hue : config_.on_led_hue;
+        triggerMotorConfigUpdate();
+        
+        LOGI("ToggleComponent '%s': State changed to %s", component_id_, 
+             current_position > 0 ? "ON" : "OFF");
+    }
+    
+    last_updated_ms = millis();
+    previous_sub_position_unit = sub_position_unit;
+    first_run = true;
+    
+    return new_state;
 }
 
-void ToggleComponent::render() {
-    updateDisplay();
-    updateLEDs();
-}
-
-void ToggleComponent::setState(const char* state_json) {
+void ToggleComponent::setState(const char *state_json)
+{
     if (!state_json) return;
     
     // Simple JSON parsing for {"state": true/false}
-    // Look for "state" field and parse boolean value
-    const char* state_field = strstr(state_json, "\"state\"");
+    const char *state_field = strstr(state_json, "\"state\"");
     if (state_field) {
-        const char* colon = strchr(state_field, ':');
+        const char *colon = strchr(state_field, ':');
         if (colon) {
-            // Skip whitespace after colon
             colon++;
             while (*colon == ' ' || *colon == '\t') colon++;
             
@@ -146,157 +233,28 @@ void ToggleComponent::setState(const char* state_json) {
             } else if (strncmp(colon, "false", 5) == 0) {
                 new_state = false;
             } else {
-                LOGW("ToggleComponent '%s': Invalid state value in JSON", component_id_);
                 return;
             }
             
-            if (new_state != current_state_) {
-                changeState(new_state);
-                LOGI("ToggleComponent '%s': State set via JSON to %s", 
+            // Update position to match state
+            uint8_t new_position = new_state ? 1 : 0;
+            if (new_position != current_position) {
+                current_position = new_position;
+                motor_config.position = current_position;
+                triggerMotorConfigUpdate();
+                
+                LOGI("ToggleComponent '%s': State set via JSON to %s",
                      component_id_, new_state ? "ON" : "OFF");
             }
         }
     }
 }
 
-const char* ToggleComponent::getState() {
-    // Create JSON representation of current state
-    snprintf(state_buffer_, sizeof(state_buffer_), 
-             "{\"state\": %s, \"label\": \"%s\"}", 
-             current_state_ ? "true" : "false",
-             getCurrentLabel());
+const char *ToggleComponent::getState()
+{
+    snprintf(state_buffer_, sizeof(state_buffer_),
+             "{\"state\": %s, \"label\": \"%s\"}",
+             current_position > 0 ? "true" : "false",
+             current_position > 0 ? config_.on_label : config_.off_label);
     return state_buffer_;
-}
-
-void ToggleComponent::updateMotorConfig() {
-    if (motor_task_queue_ == nullptr) {
-        LOGD("ToggleComponent '%s': Motor task queue not available", component_id_);
-        return;
-    }
-    
-    // Create motor configuration for toggle behavior
-    PB_SmartKnobConfig motor_config = {};
-    
-    // Set up as a 2-position toggle
-    motor_config.position_nonce = 1;
-    motor_config.position_width_radians = 1.0f;  // 1 radian per position
-    motor_config.position = current_state_ ? 1 : 0;  // 0 = off, 1 = on
-    motor_config.min_position = 0;
-    motor_config.max_position = 1;
-    motor_config.snap_point = config_.snap_point;
-    motor_config.snap_point_bias = config_.snap_point_bias;
-    
-    // Haptic feedback settings
-    motor_config.detent_strength_unit = config_.detent_strength_unit;
-    motor_config.endstop_strength_unit = 1.0f;  // Strong endstops
-    
-    // Apply the motor configuration using base class helper
-    Component::updateMotorConfig(motor_config);
-    
-    LOGD("ToggleComponent '%s': Motor config updated (position=%d)", 
-         component_id_, current_state_ ? 1 : 0);
-}
-
-void ToggleComponent::updateLEDs() {
-    int32_t hue = current_state_ ? config_.on_led_hue : config_.off_led_hue;
-    uint8_t saturation = 100;  // Full saturation
-    uint8_t brightness = 80;   // 80% brightness
-    
-    // Use base class helper method
-    Component::updateLEDs(hue, saturation, brightness);
-    
-    LOGD("ToggleComponent '%s': LEDs updated (hue=%d)", component_id_, (int)hue);
-}
-
-void ToggleComponent::updateDisplay() {
-    if (display_task_queue_ == nullptr) {
-        LOGD("ToggleComponent '%s': Display not available", component_id_);
-        return;
-    }
-    
-    // Create display text with component name and current state
-    char display_text[64];
-    snprintf(display_text, sizeof(display_text), "%s\n%s", 
-             component_config_.display_name, getCurrentLabel());
-    
-    // Use base class helper method
-    Component::updateDisplay(display_text, 2);  // Font size 2
-    
-    LOGD("ToggleComponent '%s': Display updated ('%s')", component_id_, display_text);
-}
-
-bool ToggleComponent::shouldToggleState(float knob_position) {
-    // Get adjusted position accounting for bias
-    float adjusted_position = getAdjustedPosition(knob_position);
-    
-    // Determine if we've crossed the snap point
-    bool knob_indicates_on = (adjusted_position > config_.snap_point);
-    
-    // Check if this represents a state change
-    bool should_change = (knob_indicates_on != current_state_);
-    
-    // Add some hysteresis to prevent rapid toggling
-    if (should_change) {
-        float position_change = fabsf(adjusted_position - last_knob_position_);
-        if (position_change < SNAP_THRESHOLD) {
-            should_change = false;
-        }
-    }
-    
-    return should_change;
-}
-
-void ToggleComponent::changeState(bool new_state) {
-    if (new_state == current_state_) {
-        return;  // No change needed
-    }
-    
-    current_state_ = new_state;
-    
-    // Update all feedback systems
-    updateMotorConfig();
-    updateLEDs();
-    updateDisplay();
-    
-    LOGI("ToggleComponent '%s': State changed to %s (%s)", 
-         component_id_, 
-         current_state_ ? "ON" : "OFF",
-         getCurrentLabel());
-    
-    // TODO: Broadcast state change to external systems (MQTT, etc.)
-}
-
-const char* ToggleComponent::getCurrentLabel() const {
-    return current_state_ ? config_.on_label : config_.off_label;
-}
-
-float ToggleComponent::getAdjustedPosition(float knob_position) const {
-    // Apply bias to make one direction easier than the other
-    // bias = -1.0: easier to turn on (toward +1)
-    // bias = +1.0: easier to turn off (toward -1)  
-    // bias = 0.0: symmetric behavior
-    
-    float adjusted = knob_position;
-    
-    if (config_.snap_point_bias != 0.0f) {
-        // Apply asymmetric scaling
-        if (config_.snap_point_bias > 0.0f) {
-            // Make turning off (toward -1) easier
-            if (adjusted < 0) {
-                adjusted *= (1.0f + config_.snap_point_bias);
-            } else {
-                adjusted *= (1.0f - config_.snap_point_bias * 0.5f);
-            }
-        } else {
-            // Make turning on (toward +1) easier
-            if (adjusted > 0) {
-                adjusted *= (1.0f - config_.snap_point_bias);
-            } else {
-                adjusted *= (1.0f + config_.snap_point_bias * 0.5f);
-            }
-        }
-    }
-    
-    // Normalize to 0-1 range for snap point comparison
-    return (adjusted + 1.0f) / 2.0f;
 }

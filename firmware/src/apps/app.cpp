@@ -1,17 +1,30 @@
 #include "app.h"
+#include <logging.h>
 
 App::App(SemaphoreHandle_t mutex) : mutex_(mutex)
 {
-    lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x00, 0x00), 0);
-    lv_obj_set_size(screen, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
+    LOGI("App: Constructor called, screen = %p", screen);
+    if (screen != nullptr) {
+        lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x00, 0x00), 0);
+        lv_obj_set_size(screen, LV_HOR_RES, LV_VER_RES);
+        lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
+        LOGI("App: Screen initialized successfully");
+    } else {
+        LOGE("App: Screen is NULL in constructor!");
+    }
 }
 
 App::App(SemaphoreHandle_t mutex, int8_t next, int8_t back) : mutex_(mutex), next_(next), back_(back)
 {
-    lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x00, 0x00), 0);
-    lv_obj_set_size(screen, LV_HOR_RES, LV_VER_RES);
-    lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
+    LOGI("App: Constructor (with nav) called, screen = %p", screen);
+    if (screen != nullptr) {
+        lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x00, 0x00), 0);
+        lv_obj_set_size(screen, LV_HOR_RES, LV_VER_RES);
+        lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
+        LOGI("App: Screen initialized successfully");
+    } else {
+        LOGE("App: Screen is NULL in constructor!");
+    }
 }
 
 void App::render()
