@@ -9,6 +9,9 @@ Component::Component(
 {
     // Copy component ID (ensure null termination)
     strlcpy(component_id_, component_id, sizeof(component_id_));
+    
+    // 🔧 FIX: Set the app_id field inherited from App - this is used for ID matching in ComponentManager!
+    strlcpy(app_id, component_id, sizeof(app_id));
 
     // Initialize configuration to default state
     memset(&component_config_, 0, sizeof(component_config_));

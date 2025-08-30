@@ -137,6 +137,10 @@ EntityStateUpdate ToggleComponent::updateStateFromKnob(PB_SmartKnobState state)
 
     current_position = state.current_position;
     sub_position_unit = state.sub_position_unit * motor_config.position_width_radians;
+    
+    // 🔍 DEBUG: Log position values to understand conversion
+    LOGI("ToggleComponent '%s': updateStateFromKnob - raw pos=%f, current_position=%d, last_position=%d, sub_pos=%f", 
+         component_id_, state.current_position, current_position, last_position, sub_position_unit);
 
     // Update motor config for tracking
     motor_config.position_nonce = current_position;
