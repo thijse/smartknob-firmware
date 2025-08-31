@@ -31,7 +31,9 @@ typedef enum _PB_SmartKnobCommand {
  Allows external clients (Python, web apps) to remotely configure
  SmartKnob apps by defining UI components with specific behaviors. */
 typedef enum _PB_ComponentType {
-    PB_ComponentType_TOGGLE = 0 /* Two-position switch (on/off, open/closed, etc.) */
+    PB_ComponentType_TOGGLE = 0, /* Two-position switch (on/off, open/closed, etc.) */
+    /* Future: CONTINUOUS = 1,   // Continuous range control (sliders, dimmers) */
+    PB_ComponentType_MULTI_CHOICE = 2 /* Multiple discrete options (A/B/C selection) */
 } PB_ComponentType;
 
 /* Struct definitions */
@@ -263,6 +265,24 @@ typedef struct _PB_ToggleConfig {
 } PB_ToggleConfig;
 
 /* *
+ Configuration for multiple choice components (A/B/C selection).
+ 
+ Defines a list of text options that can be cycled through using the knob.
+ Provides haptic feedback for each discrete position. */
+typedef struct _PB_MultiChoiceConfig {
+    pb_size_t options_count;
+    char options[16][33]; /* List of text options to choose from */
+    int8_t initial_index; /* Starting selected index (0-based) */
+    bool wrap_around; /* Whether to wrap from last to first option */
+    bool center_text; /* Whether to center text on display */
+    /* Physical behavior */
+    float detent_strength_unit; /* 0.0-1.0, strength of haptic "click" between options */
+    float endstop_strength_unit; /* 0.0-1.0, strength when hitting first/last option (if not wrapping) */
+    /* Visual feedback */
+    int16_t led_hue; /* LED hue for all options (0-360° HSV color wheel) */
+} PB_MultiChoiceConfig;
+
+/* *
  App component definition for remote configuration.
  
  Sent from client to firmware to define the behavior and appearance
@@ -274,6 +294,8 @@ typedef struct _PB_AppComponent {
     pb_size_t which_component_config;
     union {
         PB_ToggleConfig toggle; /* Configuration for toggle components */
+        /* Future: ContinuousConfig continuous = 5; */
+        PB_MultiChoiceConfig multi_choice; /* Configuration for multiple choice components */
     } component_config;
 } PB_AppComponent;
 
@@ -307,8 +329,8 @@ extern "C" {
 #define _PB_SmartKnobCommand_ARRAYSIZE ((PB_SmartKnobCommand)(PB_SmartKnobCommand_STRAIN_CALIBRATE+1))
 
 #define _PB_ComponentType_MIN PB_ComponentType_TOGGLE
-#define _PB_ComponentType_MAX PB_ComponentType_TOGGLE
-#define _PB_ComponentType_ARRAYSIZE ((PB_ComponentType)(PB_ComponentType_TOGGLE+1))
+#define _PB_ComponentType_MAX PB_ComponentType_MULTI_CHOICE
+#define _PB_ComponentType_ARRAYSIZE ((PB_ComponentType)(PB_ComponentType_MULTI_CHOICE+1))
 
 
 #define PB_ToSmartknob_payload_smartknob_command_ENUMTYPE PB_SmartKnobCommand
@@ -330,6 +352,7 @@ extern "C" {
 
 
 
+
 /* Initializer values for message structs */
 #define PB_FromSmartKnob_init_default            {0, 0, {PB_Knob_init_default}}
 #define PB_ToSmartknob_init_default              {0, 0, 0, {PB_RequestState_init_default}}
@@ -347,6 +370,7 @@ extern "C" {
 #define PB_StrainCalibration_init_default        {0}
 #define PB_AppComponent_init_default             {"", _PB_ComponentType_MIN, "", 0, {PB_ToggleConfig_init_default}}
 #define PB_ToggleConfig_init_default             {"", "", 0, 0, 0, 0, 0, 0}
+#define PB_MultiChoiceConfig_init_default        {0, {"", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""}, 0, 0, 0, 0, 0, 0}
 #define PB_FromSmartKnob_init_zero               {0, 0, {PB_Knob_init_zero}}
 #define PB_ToSmartknob_init_zero                 {0, 0, 0, {PB_RequestState_init_zero}}
 #define PB_Knob_init_zero                        {"", "", false, PB_PersistentConfiguration_init_zero, false, SETTINGS_Settings_init_zero}
@@ -363,6 +387,7 @@ extern "C" {
 #define PB_StrainCalibration_init_zero           {0}
 #define PB_AppComponent_init_zero                {"", _PB_ComponentType_MIN, "", 0, {PB_ToggleConfig_init_zero}}
 #define PB_ToggleConfig_init_zero                {"", "", 0, 0, 0, 0, 0, 0}
+#define PB_MultiChoiceConfig_init_zero           {0, {"", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""}, 0, 0, 0, 0, 0, 0}
 
 /* Field tags (for use in manual encoding/decoding) */
 #define PB_MotorCalibState_calibrated_tag        1
@@ -419,10 +444,18 @@ extern "C" {
 #define PB_ToggleConfig_off_led_hue_tag          6
 #define PB_ToggleConfig_on_led_hue_tag           7
 #define PB_ToggleConfig_initial_state_tag        8
+#define PB_MultiChoiceConfig_options_tag         1
+#define PB_MultiChoiceConfig_initial_index_tag   2
+#define PB_MultiChoiceConfig_wrap_around_tag     3
+#define PB_MultiChoiceConfig_center_text_tag     4
+#define PB_MultiChoiceConfig_detent_strength_unit_tag 5
+#define PB_MultiChoiceConfig_endstop_strength_unit_tag 6
+#define PB_MultiChoiceConfig_led_hue_tag         7
 #define PB_AppComponent_component_id_tag         1
 #define PB_AppComponent_type_tag                 2
 #define PB_AppComponent_display_name_tag         3
 #define PB_AppComponent_toggle_tag               4
+#define PB_AppComponent_multi_choice_tag         6
 #define PB_ToSmartknob_protocol_version_tag      1
 #define PB_ToSmartknob_nonce_tag                 2
 #define PB_ToSmartknob_request_state_tag         3
@@ -563,10 +596,12 @@ X(a, STATIC,   SINGULAR, FLOAT,    calibration_weight,   1)
 X(a, STATIC,   SINGULAR, STRING,   component_id,      1) \
 X(a, STATIC,   SINGULAR, UENUM,    type,              2) \
 X(a, STATIC,   SINGULAR, STRING,   display_name,      3) \
-X(a, STATIC,   ONEOF,    MESSAGE,  (component_config,toggle,component_config.toggle),   4)
+X(a, STATIC,   ONEOF,    MESSAGE,  (component_config,toggle,component_config.toggle),   4) \
+X(a, STATIC,   ONEOF,    MESSAGE,  (component_config,multi_choice,component_config.multi_choice),   6)
 #define PB_AppComponent_CALLBACK NULL
 #define PB_AppComponent_DEFAULT NULL
 #define PB_AppComponent_component_config_toggle_MSGTYPE PB_ToggleConfig
+#define PB_AppComponent_component_config_multi_choice_MSGTYPE PB_MultiChoiceConfig
 
 #define PB_ToggleConfig_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, STRING,   off_label,         1) \
@@ -579,6 +614,17 @@ X(a, STATIC,   SINGULAR, INT32,    on_led_hue,        7) \
 X(a, STATIC,   SINGULAR, BOOL,     initial_state,     8)
 #define PB_ToggleConfig_CALLBACK NULL
 #define PB_ToggleConfig_DEFAULT NULL
+
+#define PB_MultiChoiceConfig_FIELDLIST(X, a) \
+X(a, STATIC,   REPEATED, STRING,   options,           1) \
+X(a, STATIC,   SINGULAR, INT32,    initial_index,     2) \
+X(a, STATIC,   SINGULAR, BOOL,     wrap_around,       3) \
+X(a, STATIC,   SINGULAR, BOOL,     center_text,       4) \
+X(a, STATIC,   SINGULAR, FLOAT,    detent_strength_unit,   5) \
+X(a, STATIC,   SINGULAR, FLOAT,    endstop_strength_unit,   6) \
+X(a, STATIC,   SINGULAR, INT32,    led_hue,           7)
+#define PB_MultiChoiceConfig_CALLBACK NULL
+#define PB_MultiChoiceConfig_DEFAULT NULL
 
 extern const pb_msgdesc_t PB_FromSmartKnob_msg;
 extern const pb_msgdesc_t PB_ToSmartknob_msg;
@@ -596,6 +642,7 @@ extern const pb_msgdesc_t PB_StrainState_msg;
 extern const pb_msgdesc_t PB_StrainCalibration_msg;
 extern const pb_msgdesc_t PB_AppComponent_msg;
 extern const pb_msgdesc_t PB_ToggleConfig_msg;
+extern const pb_msgdesc_t PB_MultiChoiceConfig_msg;
 
 /* Defines for backwards compatibility with code written before nanopb-0.4.0 */
 #define PB_FromSmartKnob_fields &PB_FromSmartKnob_msg
@@ -614,24 +661,26 @@ extern const pb_msgdesc_t PB_ToggleConfig_msg;
 #define PB_StrainCalibration_fields &PB_StrainCalibration_msg
 #define PB_AppComponent_fields &PB_AppComponent_msg
 #define PB_ToggleConfig_fields &PB_ToggleConfig_msg
+#define PB_MultiChoiceConfig_fields &PB_MultiChoiceConfig_msg
 
 /* Maximum encoded size of messages (where known) */
 #define PB_Ack_size                              6
-#define PB_AppComponent_size                     211
+#define PB_AppComponent_size                     685
 #define PB_FromSmartKnob_size                    399
 #define PB_Knob_size                             252
 #define PB_Log_size                              393
 #define PB_MotorCalibState_size                  2
 #define PB_MotorCalibration_size                 15
+#define PB_MultiChoiceConfig_size                580
 #define PB_PersistentConfiguration_size          28
 #define PB_RequestState_size                     0
-#define PB_SMARTKNOB_PB_H_MAX_SIZE               PB_FromSmartKnob_size
+#define PB_SMARTKNOB_PB_H_MAX_SIZE               PB_ToSmartknob_size
 #define PB_SmartKnobConfig_size                  198
 #define PB_SmartKnobState_size                   220
 #define PB_StrainCalibState_size                 11
 #define PB_StrainCalibration_size                5
 #define PB_StrainState_size                      16
-#define PB_ToSmartknob_size                      223
+#define PB_ToSmartknob_size                      697
 #define PB_ToggleConfig_size                     107
 
 #ifdef __cplusplus

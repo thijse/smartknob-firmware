@@ -180,6 +180,11 @@ EntityStateUpdate ToggleComponent::updateStateFromKnob(PB_SmartKnobState state)
 
         // Update LED hue
         motor_config.led_hue = current_position == 0 ? config_.off_led_hue : config_.on_led_hue;
+
+        // TODO: LED color switching not working - triggerMotorConfigUpdate() called but LEDs don't change color
+        // Possible issues: motor task not processing led_hue changes, LED ring task needs different approach,
+        // or timing issue with config updates. Need to investigate motor_task.cpp LED handling.
+        triggerMotorConfigUpdate();
     }
 
     last_updated_ms = millis();

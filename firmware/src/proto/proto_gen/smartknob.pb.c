@@ -9,7 +9,7 @@
 PB_BIND(PB_FromSmartKnob, PB_FromSmartKnob, 2)
 
 
-PB_BIND(PB_ToSmartknob, PB_ToSmartknob, AUTO)
+PB_BIND(PB_ToSmartknob, PB_ToSmartknob, 2)
 
 
 PB_BIND(PB_Knob, PB_Knob, AUTO)
@@ -48,10 +48,13 @@ PB_BIND(PB_StrainState, PB_StrainState, AUTO)
 PB_BIND(PB_StrainCalibration, PB_StrainCalibration, AUTO)
 
 
-PB_BIND(PB_AppComponent, PB_AppComponent, AUTO)
+PB_BIND(PB_AppComponent, PB_AppComponent, 2)
 
 
 PB_BIND(PB_ToggleConfig, PB_ToggleConfig, AUTO)
+
+
+PB_BIND(PB_MultiChoiceConfig, PB_MultiChoiceConfig, 2)
 
 
 

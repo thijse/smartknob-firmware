@@ -112,9 +112,10 @@ void RootTask::run()
                                                        {
                                                            // Switch to component mode and activate the new component
                                                            component_mode_ = true;
-                                                           if (component_manager_->setActiveComponent(to_smartknob.payload.app_component.component_id)) {
+                                                           if (component_manager_->setActiveComponent(to_smartknob.payload.app_component.component_id))
+                                                           {
                                                                // setActiveComponent now calls render() internally (like Apps::setActive)
-                                                               component_manager_->triggerMotorConfigUpdate();  // Like DisplayTask::enableDemo
+                                                               component_manager_->triggerMotorConfigUpdate(); // Like DisplayTask::enableDemo
                                                            }
                                                            LOGI("RootTask: Switched to component mode, activated '%s'", to_smartknob.payload.app_component.component_id);
                                                        }
@@ -212,8 +213,8 @@ void RootTask::run()
 
     // Initialize component manager with App-based architecture
     component_manager_ = new ComponentManager(mutex_);
-    component_manager_->setMotorNotifier(&motor_notifier); 
-    
+    component_manager_->setMotorNotifier(&motor_notifier);
+
     // TODO: move playhaptic to notifier? or other interface to just pass "possible" motor commands not entire object/class.
     reset_task_->setMotorTask(&motor_task_);
 

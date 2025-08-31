@@ -1,5 +1,6 @@
 #include "component_manager.h"
 #include "toggle/toggle_component.h"
+#include "multipleChoice/component_multiple_choice.h"
 #include "../util.h"
 #include <logging.h>
 
@@ -62,7 +63,8 @@ EntityStateUpdate ComponentManager::update(AppState state)
 
 void ComponentManager::render()
 {
-    if (active_component_) {
+    if (active_component_)
+    {
         active_component_->render();
     }
 };
@@ -70,15 +72,16 @@ void ComponentManager::render()
 bool ComponentManager::setActiveComponent(const std::string &component_id)
 {
     SemaphoreGuard lock(component_mutex_);
-    
+
     auto it = components_.find(component_id);
-    if (it == components_.end()) {
+    if (it == components_.end())
+    {
         LOGW("Component not found: %s", component_id.c_str());
         return false;
     }
-    
+
     active_component_ = it->second;
-    render();  // CRITICAL: Apps pattern - always call render when setting active
+    render(); // CRITICAL: Apps pattern - always call render when setting active
     return true;
 }
 
@@ -232,7 +235,14 @@ std::shared_ptr<Component> ComponentManager::createComponentByType(
         LOGI("ComponentManager: Creating ToggleComponent '%s' with full config", config.component_id);
         return std::shared_ptr<Component>(new ToggleComponent(
             screen_mutex_, // Pass mutex to App constructor
-            config  // Pass full config for constructor-time configuration
+            config         // Pass full config for constructor-time configuration
+            ));
+
+    case PB_ComponentType_MULTI_CHOICE:
+        LOGI("ComponentManager: Creating MultipleChoice '%s' with full config", config.component_id);
+        return std::shared_ptr<Component>(new MultipleChoice(
+            screen_mutex_, // Pass mutex to App constructor
+            config         // Pass full config for constructor-time configuration
             ));
 
     default:

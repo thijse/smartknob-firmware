@@ -15,25 +15,25 @@ class ComponentManager
 
 public:
     ComponentManager(SemaphoreHandle_t mutex);
-    ~ComponentManager();  // Add explicit destructor declaration
+    ~ComponentManager(); // Add explicit destructor declaration
 
     // === APPS-PATTERN METHODS (keep these exactly) ===
-    void render();                               // Like Apps::render()
-    void triggerMotorConfigUpdate();             // Like Apps::triggerMotorConfigUpdate() 
-    EntityStateUpdate update(AppState state);    // Like Apps::update()
-    void setMotorNotifier(MotorNotifier *motor_notifier);  // Like Apps::setMotorNotifier()
+    void render();                                                  // Like Apps::render()
+    void triggerMotorConfigUpdate();                                // Like Apps::triggerMotorConfigUpdate()
+    EntityStateUpdate update(AppState state);                       // Like Apps::update()
+    void setMotorNotifier(MotorNotifier *motor_notifier);           // Like Apps::setMotorNotifier()
     void setOSConfigNotifier(OSConfigNotifier *os_config_notifier); // Like Apps::setOSConfigNotifier()
-    
+
     // === COMPONENT-SPECIFIC METHODS ===
-    bool createComponent(const PB_AppComponent &config);     // From original ComponentManager
-    bool destroyComponent(const std::string &component_id);  // From original ComponentManager
-    bool setActiveComponent(const std::string &component_id); // From original (but modify to call render())
-    std::shared_ptr<Component> getActiveComponent();         // From original
+    bool createComponent(const PB_AppComponent &config);                   // From original ComponentManager
+    bool destroyComponent(const std::string &component_id);                // From original ComponentManager
+    bool setActiveComponent(const std::string &component_id);              // From original (but modify to call render())
+    std::shared_ptr<Component> getActiveComponent();                       // From original
     void add(const std::string &id, std::shared_ptr<Component> component); // Like Apps::add but for components
-    void deactivateAll();                                    // From original ComponentManager
-    
+    void deactivateAll();                                                  // From original ComponentManager
+
     // === COLLECTION MANAGEMENT (Apps pattern) ===
-    void clear();                                           // Like Apps::clear()
+    void clear();                                                     // Like Apps::clear()
     std::shared_ptr<Component> find(const std::string &component_id); // Like Apps::find()
 
     PB_SmartKnobConfig blocked_motor_config = {
@@ -49,13 +49,13 @@ private:
 
 protected:
     SemaphoreHandle_t screen_mutex_;
-    SemaphoreHandle_t component_mutex_;  // Like app_mutex_ but for components
+    SemaphoreHandle_t component_mutex_; // Like app_mutex_ but for components
 
     std::map<std::string, std::shared_ptr<Component>> components_; // Like apps but string keys for components
-    
-    std::shared_ptr<Component> active_component_ = nullptr;  // Like active_app
 
-    std::shared_ptr<Component> find(uint8_t id);  // Keep for compatibility (might be unused)
+    std::shared_ptr<Component> active_component_ = nullptr; // Like active_app
+
+    std::shared_ptr<Component> find(uint8_t id); // Keep for compatibility (might be unused)
 
     PB_SmartKnobConfig root_level_motor_config;
 

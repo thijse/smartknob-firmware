@@ -284,7 +284,7 @@ message StrainCalibration {
 enum ComponentType {
     TOGGLE = 0;          // Two-position switch (on/off, open/closed, etc.)
     // Future: CONTINUOUS = 1,   // Continuous range control (sliders, dimmers)
-    // Future: MULTI_CHOICE = 2  // Multiple discrete options (A/B/C selection)
+    MULTI_CHOICE = 2;    // Multiple discrete options (A/B/C selection)
 }
 
 /**
@@ -301,7 +301,7 @@ message AppComponent {
     oneof component_config {
         ToggleConfig toggle = 4;                             // Configuration for toggle components
         // Future: ContinuousConfig continuous = 5;
-        // Future: MultiChoiceConfig multi_choice = 6;
+        MultiChoiceConfig multi_choice = 6;                  // Configuration for multiple choice components
     }
 }
 
@@ -326,5 +326,25 @@ message ToggleConfig {
     
     // Initial behavior
     bool initial_state = 8;         // Starting state: false=off, true=on
+}
+
+/**
+ * Configuration for multiple choice components (A/B/C selection).
+ * 
+ * Defines a list of text options that can be cycled through using the knob.
+ * Provides haptic feedback for each discrete position.
+ */
+message MultiChoiceConfig {
+    repeated string options = 1 [(nanopb).max_count = 16, (nanopb).max_length = 32]; // List of text options to choose from
+    int32 initial_index = 2 [(nanopb).int_size = IS_8];     // Starting selected index (0-based)
+    bool wrap_around = 3;                                    // Whether to wrap from last to first option
+    bool center_text = 4;                                    // Whether to center text on display
+    
+    // Physical behavior
+    float detent_strength_unit = 5; // 0.0-1.0, strength of haptic "click" between options
+    float endstop_strength_unit = 6; // 0.0-1.0, strength when hitting first/last option (if not wrapping)
+    
+    // Visual feedback
+    int32 led_hue = 7 [(nanopb).int_size = IS_16];         // LED hue for all options (0-360° HSV color wheel)
 }
 
