@@ -25,7 +25,7 @@ public:
     void setOSConfigNotifier(OSConfigNotifier *os_config_notifier); // Like Apps::setOSConfigNotifier()
 
     // === COMPONENT-SPECIFIC METHODS ===
-    bool createComponent(const PB_AppComponent &config);                   // From original ComponentManager
+    bool createComponent(PB_AppComponent config);                          // Pass by value
     bool destroyComponent(const std::string &component_id);                // From original ComponentManager
     bool setActiveComponent(const std::string &component_id);              // From original (but modify to call render())
     std::shared_ptr<Component> getActiveComponent();                       // From original
@@ -44,8 +44,13 @@ public:
         .detent_positions = {},
     };
 
+    PB_SmartKnobConfig getMotorConfig()
+    {
+        return motor_config_;
+    }
+
 private:
-    std::shared_ptr<Component> createComponentByType(PB_ComponentType type, const PB_AppComponent &config); // From original
+    std::shared_ptr<Component> createComponentByType(PB_ComponentType type, PB_AppComponent config); // Pass by value
 
 protected:
     SemaphoreHandle_t screen_mutex_;
@@ -53,13 +58,15 @@ protected:
 
     std::map<std::string, std::shared_ptr<Component>> components_; // Like apps but string keys for components
 
-    std::shared_ptr<Component> active_component_ = nullptr; // Like active_app
+    std::shared_ptr<Component> active_component_ = nullptr;
 
-    std::shared_ptr<Component> find(uint8_t id); // Keep for compatibility (might be unused)
-
-    PB_SmartKnobConfig root_level_motor_config;
-
-    MotorNotifier *motor_notifier;
-
-    OSConfigNotifier *os_config_notifier_;
+    MotorNotifier *motor_notifier_;       // From Apps
+    OSConfigNotifier *os_config_notifier_; // From Apps
+    PB_SmartKnobConfig motor_config_ = {
+        .detent_strength_unit = 0,
+        .endstop_strength_unit = 1,
+        .snap_point = 1.1,
+        .detent_positions_count = 0,
+        .snap_point_bias = 0,
+    };
 };

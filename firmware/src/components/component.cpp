@@ -5,20 +5,18 @@
 
 Component::Component(
     SemaphoreHandle_t mutex,
-    const char *component_id) : App(mutex) // ✅ Call App constructor!
+    const PB_AppComponent &config) : App(mutex) // ✅ Call App constructor!
 {
-    // Copy component ID (ensure null termination)
-    strlcpy(component_id_, component_id, sizeof(component_id_));
+    // Store the full protobuf configuration (Nanopb static allocation handles strings safely)
+    component_config_ = config;
 
-    // 🔧 FIX: Set the app_id field inherited from App - this is used for ID matching in ComponentManager!
-    strlcpy(app_id, component_id, sizeof(app_id));
+    // Copy component ID to inherited fields
+    strlcpy(component_id_, config.component_id, sizeof(component_id_));
+    strlcpy(app_id, config.component_id, sizeof(app_id));
 
-    // Initialize configuration to default state
-    memset(&component_config_, 0, sizeof(component_config_));
-
-    // LOGD("Component '%s': Base component created", component_id_);
+    LOGD("Component '%s': Base component created with type %d", component_id_, config.type);
 }
-
+ 
 // ========== Component Hardware Integration ==========
 //
 // Components now inherit from App and can use all App hardware integration methods:

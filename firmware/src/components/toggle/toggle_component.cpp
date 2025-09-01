@@ -5,24 +5,23 @@
 
 ToggleComponent::ToggleComponent(
     SemaphoreHandle_t mutex,
-    const PB_AppComponent &config) : Component(mutex, config.component_id)
+    const PB_AppComponent &config) : Component(mutex, config) // ✅ Use unified constructor
 {
     // Validate configuration first
-    if (config.type != PB_ComponentType_TOGGLE)
+    if (component_config_.type != PB_ComponentType_TOGGLE)
     {
-        LOGE("ToggleComponent: Invalid component type %d", config.type);
+        LOGE("ToggleComponent: Invalid component type %d", component_config_.type);
         return;
     }
 
-    if (config.which_component_config != PB_AppComponent_toggle_tag)
+    if (component_config_.which_component_config != PB_AppComponent_toggle_tag)
     {
         LOGE("ToggleComponent: Missing toggle configuration");
         return;
     }
 
-    // Store the toggle configuration
-    component_config_ = config;
-    config_ = config.component_config.toggle;
+    // Get typed config from base class (single source of truth)
+    const auto &config_ = getConfig();
     configured_ = true;
 
     // Initialize position based on config
@@ -46,7 +45,7 @@ ToggleComponent::ToggleComponent(
         0,                                                                // detent_positions_count
         current_position == 0 ? config_.off_led_hue : config_.on_led_hue, // led_hue
     };
-    strncpy(motor_config.id, config.component_id, sizeof(motor_config.id) - 1);
+    strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
 
     // Initialize state buffer
     memset(state_buffer_, 0, sizeof(state_buffer_));
@@ -81,6 +80,9 @@ void ToggleComponent::initScreen()
     lv_obj_set_style_arc_width(arc_, 24, LV_PART_INDICATOR);
     lv_obj_set_style_pad_all(arc_, -5, LV_PART_KNOB);
 
+    // Get config from base class
+    const auto &config_ = getConfig();
+
     // Create status label with user configured labels
     status_label = lv_label_create(screen);
     lv_label_set_text(status_label, current_position == 0 ? config_.off_label : config_.on_label);
@@ -99,7 +101,7 @@ void ToggleComponent::initScreen()
 
     // Create component name label
     lv_obj_t *label = lv_label_create(screen);
-    lv_label_set_text(label, component_config_.display_name);
+    lv_label_set_text(label, getDisplayName()); // Use base class method
     lv_obj_align(label, LV_ALIGN_BOTTOM_MID, 0, -48);
 }
 
@@ -156,6 +158,9 @@ EntityStateUpdate ToggleComponent::updateStateFromKnob(PB_SmartKnobState state)
     if (last_position != current_position && first_run)
     {
         SemaphoreGuard lock(mutex_);
+
+        // Get config from base class
+        const auto &config_ = getConfig();
 
         if (current_position == 0)
         {
@@ -238,6 +243,9 @@ void ToggleComponent::setState(const char *state_json)
 
 const char *ToggleComponent::getState()
 {
+    // Get config from base class
+    const auto &config_ = getConfig();
+
     snprintf(state_buffer_, sizeof(state_buffer_),
              "{\"state\": %s, \"label\": \"%s\"}",
              current_position > 0 ? "true" : "false",

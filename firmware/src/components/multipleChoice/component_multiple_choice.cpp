@@ -6,31 +6,36 @@
 
 MultipleChoice::MultipleChoice(
     SemaphoreHandle_t mutex,
-    const PB_AppComponent &config) : Component(mutex, config.component_id)
+    const PB_AppComponent &config) : Component(mutex, config) // ✅ Use unified constructor
 {
     // Validate configuration first
-    if (config.type != PB_ComponentType_MULTI_CHOICE)
+    if (component_config_.type != PB_ComponentType_MULTI_CHOICE)
     {
-        LOGE("MultipleChoice: Invalid component type %d", config.type);
+        LOGE("MultipleChoice: Invalid component type %d", component_config_.type);
         return;
     }
 
-    if (config.which_component_config != PB_AppComponent_multi_choice_tag)
+    if (component_config_.which_component_config != PB_AppComponent_multi_choice_tag)
     {
         LOGE("MultipleChoice: Missing multi choice configuration");
         return;
     }
 
-    // Store the configuration
-    component_config_ = config;
-    config_ = config.component_config.multi_choice;
-    configured_ = true;
-    
-    // Safety check: ensure options_count is reasonable
-    if (config_.options_count > 20) {
-        LOGE("MultipleChoice: Excessive options count %d, limiting to 20", config_.options_count);
-        config_.options_count = 20;
+    // Get typed config from base class (single source of truth)
+    const auto &config_ = getConfig();
+
+    LOGI("MultipleChoice: About to validate %d options from protobuf", config_.options_count);
+
+    // Validate options count (Nanopb static allocation should be safe)
+    if (config_.options_count <= 0 || config_.options_count > 16)
+    {
+        LOGE("MultipleChoice: Invalid options count %d", config_.options_count);
+        configured_ = false;
+        return;
     }
+
+    LOGI("MultipleChoice: Successfully validated %d options", config_.options_count);
+    configured_ = true;
 
     // Initialize position based on config
     current_position = config_.initial_index;
@@ -46,7 +51,7 @@ MultipleChoice::MultipleChoice(
         0,                                   // sub_position_unit
         (uint8_t)current_position,           // position_nonce
         0,                                   // min_position
-        (int)config_.options_count - 1,      // max_position
+        config_.options_count - 1,           // max_position (use config from base class)
         12.0 * PI / 180,                     // position_width_radians (1.5x wider: 8->12 degrees per position)
         config_.detent_strength_unit * 2.0f, // detent_strength_unit (2x stronger haptic feedback)
         config_.endstop_strength_unit,       // endstop_strength_unit
@@ -57,10 +62,10 @@ MultipleChoice::MultipleChoice(
         0,                                   // detent_positions_count
         config_.led_hue,                     // led_hue
     };
-    strncpy(motor_config.id, config.component_id, sizeof(motor_config.id) - 1);
+    strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
 
     LOGI("MultipleChoice: Created component '%s' with %d options, initial index %d",
-         config.component_id, config_.options_count, current_position);
+         component_config_.component_id, config_.options_count, current_position);
 
     // Initialize screen (like ToggleComponent)
     initScreen();
@@ -76,6 +81,9 @@ void MultipleChoice::initScreen()
 
     LOGI("MultipleChoice: Initializing screen for component '%s'", component_id_);
 
+    // Get config from base class
+    const auto &config_ = getConfig();
+
     // Create persistent UI objects (like ToggleComponent)
     if (config_.options_count == 0)
     {
@@ -90,7 +98,7 @@ void MultipleChoice::initScreen()
 
     // Create title label (component name)
     title_label_ = lv_label_create(screen);
-    lv_label_set_text(title_label_, component_config_.display_name);
+    lv_label_set_text(title_label_, getDisplayName()); // Use base class method
     lv_obj_align(title_label_, LV_ALIGN_TOP_MID, 0, 16);
     lv_obj_set_style_text_color(title_label_, lv_color_make(180, 180, 180), 0);
     lv_obj_set_style_text_font(title_label_, &roboto_semi_bold_mono_16pt, 0);
@@ -130,6 +138,9 @@ EntityStateUpdate MultipleChoice::updateStateFromKnob(PB_SmartKnobState state)
     {
         return new_state;
     }
+
+    // Get config from base class
+    const auto &config_ = getConfig();
 
     // Update position based on motor position
     int new_position = (int)round(state.current_position);
@@ -202,6 +213,8 @@ const char *MultipleChoice::getState()
         return "{}";
     }
 
+    const auto &config_ = getConfig(); // Get config from base class
+
     static char state_buffer[256];
     snprintf(state_buffer, sizeof(state_buffer),
              "{\"selected_index\": %d, \"selected_text\": \"%s\", \"options_count\": %d}",
@@ -212,10 +225,16 @@ const char *MultipleChoice::getState()
 
 const char *MultipleChoice::get_selected_text() const
 {
+    const auto &config_ = getConfig(); // Get config from base class
+
     if (!configured_ || current_position < 0 || current_position >= config_.options_count)
     {
-        return "";
+        LOGW("MultipleChoice: get_selected_text bounds check failed - configured: %d, position: %d, count: %d",
+             configured_, current_position, config_.options_count);
+        return "BOUNDS_ERROR";
     }
+
+    // Use Nanopb static allocation strings directly
     return config_.options[current_position];
 }
 
@@ -238,6 +257,9 @@ void MultipleChoice::updateDisplay()
 {
     if (!configured_)
         return;
+
+    // Get config from base class
+    const auto &config_ = getConfig();
 
     // Update option text (like ToggleComponent updates its labels)
     if (option_label_ != nullptr)

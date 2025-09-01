@@ -25,12 +25,12 @@ class Component : public App
 { // ✅ Inherit from App!
 public:
     /**
-     * Create a new component with the given ID.
+     * Create a new component with the given configuration.
      *
      * @param mutex Mutex for thread-safe operations (passed to App)
-     * @param component_id Unique identifier for this component instance
+     * @param config Complete component configuration including ID
      */
-    Component(SemaphoreHandle_t mutex, const char *component_id);
+    Component(SemaphoreHandle_t mutex, const PB_AppComponent &config);
 
     virtual ~Component() = default;
 
@@ -48,7 +48,17 @@ public:
     /**
      * Get the unique ID of this component.
      */
-    const char *getComponentId() const { return component_id_; }
+    const char *getComponentId() const { return component_config_.component_id; }
+
+    /**
+     * Get the display name of this component.
+     */
+    const char *getDisplayName() const { return component_config_.display_name; }
+
+    /**
+     * Get the component type.
+     */
+    PB_ComponentType getType() const { return component_config_.type; }
 
     /**
      * Get the type name of this component (for debugging/logging).
@@ -81,5 +91,4 @@ protected:
 
     char component_id_[33];            // Unique component identifier
     PB_AppComponent component_config_; // Current configuration
-
 };

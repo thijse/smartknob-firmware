@@ -18,7 +18,7 @@ public:
     ToggleComponent(SemaphoreHandle_t mutex, const PB_AppComponent &config);
 
     // ========== Component Interface ==========
-    bool configure(const PB_AppComponent &config) override { return true; } // No-op since config is done in constructor
+    bool configure(const PB_AppComponent &config) override { return configured_; } // Return current status
     const char *getComponentType() const override { return "toggle"; }
 
     // ========== State Interface ==========
@@ -43,10 +43,14 @@ private:
     long last_updated_ms = 0;
     bool first_run = false;
 
-    // Component configuration (set once in constructor)
-    PB_AppComponent component_config_; // Full protobuf config for display_name etc.
-    PB_ToggleConfig config_;           // Toggle-specific config
+    // Configuration state (no redundant storage)
     bool configured_ = false;
+
+    // Helper for clean access to typed config
+    const PB_ToggleConfig &getConfig() const
+    {
+        return component_config_.component_config.toggle;
+    }
 
     // State buffer for getState()
     char state_buffer_[128];

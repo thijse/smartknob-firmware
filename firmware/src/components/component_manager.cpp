@@ -8,7 +8,7 @@ ComponentManager::ComponentManager(SemaphoreHandle_t mutex) : screen_mutex_(mute
 {
     component_mutex_ = xSemaphoreCreateMutex();
 }
-
+ 
 ComponentManager::~ComponentManager()
 {
     // Deactivate current component
@@ -85,7 +85,7 @@ bool ComponentManager::setActiveComponent(const std::string &component_id)
     return true;
 }
 
-bool ComponentManager::createComponent(const PB_AppComponent &config)
+bool ComponentManager::createComponent(PB_AppComponent config) // Pass by value
 {
     // Validate configuration
     if (strlen(config.component_id) == 0)
@@ -119,7 +119,7 @@ bool ComponentManager::createComponent(const PB_AppComponent &config)
 
     // Create new component
     LOGI("ComponentManager: About to create component of type %d", config.type);
-    auto component = createComponentByType(config.type, config);
+    auto component = createComponentByType(config.type, config); // Pass the copy forward
     if (!component)
     {
         LOGE("ComponentManager: Failed to create component of type %d", config.type);
@@ -131,9 +131,9 @@ bool ComponentManager::createComponent(const PB_AppComponent &config)
     components_[component_id] = std::move(component);
 
     // Set motor notifier if available (like Apps do)
-    if (motor_notifier)
+    if (motor_notifier_)
     {
-        components_[component_id]->setMotorNotifier(motor_notifier);
+        components_[component_id]->setMotorNotifier(motor_notifier_);
     }
 
     LOGI("ComponentManager: Component '%s' created successfully", config.component_id);
@@ -165,42 +165,30 @@ bool ComponentManager::destroyComponent(const std::string &component_id)
 
 void ComponentManager::setMotorNotifier(MotorNotifier *motor_notifier)
 {
-    this->motor_notifier = motor_notifier;
-
-    std::map<std::string, std::shared_ptr<Component>>::iterator it;
-    for (it = components_.begin(); it != components_.end(); it++)
-    {
-        it->second->setMotorNotifier(motor_notifier);
-    }
+    this->motor_notifier_ = motor_notifier;
 }
 
 void ComponentManager::triggerMotorConfigUpdate()
 {
-    if (this->motor_notifier != nullptr)
+    if (active_component_)
     {
-        if (active_component_ != nullptr)
+        if (this->motor_notifier_ != nullptr)
         {
-            motor_notifier->requestUpdate(active_component_->getMotorConfig());
-        }
-        else
-        {
-            motor_notifier->requestUpdate(blocked_motor_config);
-            LOGW("No active component");
+            LOGI("ComponentManager: Triggering motor config update for active component");
+            motor_notifier_->requestUpdate(active_component_->getMotorConfig());
         }
     }
     else
     {
-        LOGW("Motor_notifier is not set");
+        if (this->motor_notifier_ != nullptr)
+        {
+            LOGI("ComponentManager: Triggering motor config update for blocked state");
+            motor_notifier_->requestUpdate(blocked_motor_config);
+        }
     }
 }
 
 // ComponentManager doesn't need handleNavigationEvent - components use protobuf control
-
-std::shared_ptr<Component> ComponentManager::find(uint8_t id)
-{
-    // Keep for compatibility but likely unused
-    return nullptr;
-}
 
 std::shared_ptr<Component> ComponentManager::find(const std::string &component_id)
 {
@@ -227,7 +215,7 @@ void ComponentManager::setOSConfigNotifier(OSConfigNotifier *os_config_notifier)
 
 std::shared_ptr<Component> ComponentManager::createComponentByType(
     PB_ComponentType type,
-    const PB_AppComponent &config)
+    PB_AppComponent config) // Pass by value
 {
     switch (type)
     {
@@ -235,14 +223,14 @@ std::shared_ptr<Component> ComponentManager::createComponentByType(
         LOGI("ComponentManager: Creating ToggleComponent '%s' with full config", config.component_id);
         return std::shared_ptr<Component>(new ToggleComponent(
             screen_mutex_, // Pass mutex to App constructor
-            config         // Pass full config for constructor-time configuration
+            config         // Pass the temporary copy, which is valid during the constructor call
             ));
 
     case PB_ComponentType_MULTI_CHOICE:
         LOGI("ComponentManager: Creating MultipleChoice '%s' with full config", config.component_id);
         return std::shared_ptr<Component>(new MultipleChoice(
             screen_mutex_, // Pass mutex to App constructor
-            config         // Pass full config for constructor-time configuration
+            config         // Pass the temporary copy, which is valid during the constructor call
             ));
 
     default:
