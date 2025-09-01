@@ -15,8 +15,9 @@ import serial
 from datetime import datetime
 
 # Add smartknob-connection2 directory to path for imports
-connection_path = os.path.join(os.path.dirname(__file__), '..', 'smartknob-connection2')
-sys.path.insert(0, connection_path)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+smartknob_path = os.path.dirname(current_dir)
+sys.path.insert(0, smartknob_path)
 
 from smartknob.protocol import SmartKnobConnection
 from smartknob.connection import find_smartknob_ports

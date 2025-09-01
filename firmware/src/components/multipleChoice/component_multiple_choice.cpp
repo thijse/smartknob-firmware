@@ -25,6 +25,12 @@ MultipleChoice::MultipleChoice(
     component_config_ = config;
     config_ = config.component_config.multi_choice;
     configured_ = true;
+    
+    // Safety check: ensure options_count is reasonable
+    if (config_.options_count > 20) {
+        LOGE("MultipleChoice: Excessive options count %d, limiting to 20", config_.options_count);
+        config_.options_count = 20;
+    }
 
     // Initialize position based on config
     current_position = config_.initial_index;
