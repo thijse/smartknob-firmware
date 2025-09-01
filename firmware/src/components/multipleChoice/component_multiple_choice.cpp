@@ -57,10 +57,10 @@ MultipleChoice::MultipleChoice(
         config_.endstop_strength_unit,       // endstop_strength_unit
         0.5,                                 // snap_point
         "",                                  // id
-        0,                                   // id_nonce
-        {},                                  // detent_positions
-        0,                                   // detent_positions_count
-        config_.led_hue,                     // led_hue
+        0,                                   // detent_positions_count (FIXED: was id_nonce)
+        {},                                  // detent_positions (FIXED: was detent_positions)
+        0,                                   // snap_point_bias (FIXED: was detent_positions_count)
+        config_.led_hue                      // led_hue
     };
     strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
 
@@ -84,42 +84,46 @@ void MultipleChoice::initScreen()
     // Get config from base class
     const auto &config_ = getConfig();
 
-    // Create persistent UI objects (like ToggleComponent)
-    if (config_.options_count == 0)
     {
-        // Show error message if no options
-        lv_obj_t *error_label = lv_label_create(screen);
-        lv_label_set_text(error_label, "No options");
-        lv_obj_center(error_label);
-        lv_obj_set_style_text_color(error_label, lv_color_make(255, 0, 0), 0);
-        LOGW("MultipleChoice: No options available");
-        return;
-    }
+        SemaphoreGuard lock(mutex_); // ✅ CRITICAL: Protect all LVGL operations
 
-    // Create title label (component name)
-    title_label_ = lv_label_create(screen);
-    lv_label_set_text(title_label_, getDisplayName()); // Use base class method
-    lv_obj_align(title_label_, LV_ALIGN_TOP_MID, 0, 16);
-    lv_obj_set_style_text_color(title_label_, lv_color_make(180, 180, 180), 0);
-    lv_obj_set_style_text_font(title_label_, &roboto_semi_bold_mono_16pt, 0);
+        // Create persistent UI objects (like ToggleComponent)
+        if (config_.options_count == 0)
+        {
+            // Show error message if no options
+            lv_obj_t *error_label = lv_label_create(screen);
+            lv_label_set_text(error_label, "No options");
+            lv_obj_center(error_label);
+            lv_obj_set_style_text_color(error_label, lv_color_make(255, 0, 0), 0);
+            LOGW("MultipleChoice: No options available");
+            return;
+        }
 
-    // Create main option label (current selection)
-    option_label_ = lv_label_create(screen);
-    lv_obj_center(option_label_);
-    lv_obj_set_style_text_align(option_label_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(option_label_, lv_color_white(), 0);
+        // Create title label (component name)
+        title_label_ = lv_label_create(screen);
+        lv_label_set_text(title_label_, getDisplayName()); // Use base class method
+        lv_obj_align(title_label_, LV_ALIGN_TOP_MID, 0, 16);
+        lv_obj_set_style_text_color(title_label_, lv_color_make(180, 180, 180), 0);
+        lv_obj_set_style_text_font(title_label_, &roboto_semi_bold_mono_16pt, 0);
 
-    // Use large font for 2x bigger text (48pt vs typical 24pt)
-    lv_obj_set_style_text_font(option_label_, &roboto_regular_mono_48pt, 0);
+        // Create main option label (current selection)
+        option_label_ = lv_label_create(screen);
+        lv_obj_center(option_label_);
+        lv_obj_set_style_text_align(option_label_, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(option_label_, lv_color_white(), 0);
 
-    // Create position indicator label (only if multiple options)
-    if (config_.options_count > 1)
-    {
-        position_label_ = lv_label_create(screen);
-        lv_obj_align(position_label_, LV_ALIGN_BOTTOM_MID, 0, -10);
-        lv_obj_set_style_text_color(position_label_, lv_color_make(120, 120, 120), 0);
-        lv_obj_set_style_text_font(position_label_, &roboto_semi_bold_mono_16pt, 0);
-    }
+        // Use large font for 2x bigger text (48pt vs typical 24pt)
+        lv_obj_set_style_text_font(option_label_, &roboto_regular_mono_48pt, 0);
+
+        // Create position indicator label (only if multiple options)
+        if (config_.options_count > 1)
+        {
+            position_label_ = lv_label_create(screen);
+            lv_obj_align(position_label_, LV_ALIGN_BOTTOM_MID, 0, -10);
+            lv_obj_set_style_text_color(position_label_, lv_color_make(120, 120, 120), 0);
+            lv_obj_set_style_text_font(position_label_, &roboto_semi_bold_mono_16pt, 0);
+        }
+    } // ✅ Mutex automatically released here
 
     // Initial display update
     updateDisplay();
@@ -185,7 +189,7 @@ EntityStateUpdate MultipleChoice::updateStateFromKnob(PB_SmartKnobState state)
         updateDisplay();
 
         // Update motor config for LED color
-        triggerMotorConfigUpdate();
+        //triggerMotorConfigUpdate();
     }
 
     return new_state;
@@ -261,40 +265,44 @@ void MultipleChoice::updateDisplay()
     // Get config from base class
     const auto &config_ = getConfig();
 
-    // Update option text (like ToggleComponent updates its labels)
-    if (option_label_ != nullptr)
     {
-        const char *current_text = get_selected_text();
-        if (current_text && strlen(current_text) > 0)
-        {
-            // Protect against overly long text that could cause display issues
-            static char safe_text[64]; // Safe buffer size for display
-            strncpy(safe_text, current_text, sizeof(safe_text) - 1);
-            safe_text[sizeof(safe_text) - 1] = '\0'; // Ensure null termination
+        SemaphoreGuard lock(mutex_); // ✅ CRITICAL: Protect all LVGL operations
 
-            // Truncate with ellipsis if too long
-            if (strlen(current_text) >= sizeof(safe_text) - 3)
+        // Update option text (like ToggleComponent updates its labels)
+        if (option_label_ != nullptr)
+        {
+            const char *current_text = get_selected_text();
+            if (current_text && strlen(current_text) > 0)
             {
-                strcpy(safe_text + sizeof(safe_text) - 4, "...");
-                LOGW("MultipleChoice: Text truncated - original length %d", (int)strlen(current_text));
+                // Protect against overly long text that could cause display issues
+                static char safe_text[64]; // Safe buffer size for display
+                strncpy(safe_text, current_text, sizeof(safe_text) - 1);
+                safe_text[sizeof(safe_text) - 1] = '\0'; // Ensure null termination
+
+                // Truncate with ellipsis if too long
+                if (strlen(current_text) >= sizeof(safe_text) - 3)
+                {
+                    strcpy(safe_text + sizeof(safe_text) - 4, "...");
+                    LOGW("MultipleChoice: Text truncated - original length %d", (int)strlen(current_text));
+                }
+
+                lv_label_set_text(option_label_, safe_text);
             }
-
-            lv_label_set_text(option_label_, safe_text);
+            else
+            {
+                lv_label_set_text(option_label_, "ERROR");
+            }
         }
-        else
+
+        // Update position indicator (like "1/5")
+        if (position_label_ != nullptr && config_.options_count > 1)
         {
-            lv_label_set_text(option_label_, "ERROR");
+            char position_text[16];
+            snprintf(position_text, sizeof(position_text), "%d/%d",
+                     current_position + 1, config_.options_count);
+            lv_label_set_text(position_label_, position_text);
         }
-    }
-
-    // Update position indicator (like "1/5")
-    if (position_label_ != nullptr && config_.options_count > 1)
-    {
-        char position_text[16];
-        snprintf(position_text, sizeof(position_text), "%d/%d",
-                 current_position + 1, config_.options_count);
-        lv_label_set_text(position_label_, position_text);
-    }
+    } // ✅ Mutex automatically released here
 
     LOGI("MultipleChoice: Updated display - option %d/%d: '%s'",
          current_position + 1, config_.options_count, get_selected_text());

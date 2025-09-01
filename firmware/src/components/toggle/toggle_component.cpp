@@ -30,20 +30,20 @@ ToggleComponent::ToggleComponent(
 
     // Configure motor with user settings
     motor_config = PB_SmartKnobConfig{
-        current_position,                                                 // position
-        0,                                                                // sub_position_unit
-        current_position,                                                 // position_nonce
-        0,                                                                // min_position
-        1,                                                                // max_position
-        60 * PI / 180,                                                    // position_width_radians
-        config_.detent_strength_unit,                                     // detent_strength_unit
-        1,                                                                // endstop_strength_unit
-        config_.snap_point,                                               // snap_point
-        "",                                                               // id
-        0,                                                                // id_nonce
-        {},                                                               // detent_positions
-        0,                                                                // detent_positions_count
-        current_position == 0 ? config_.off_led_hue : config_.on_led_hue, // led_hue
+        current_position,                                                // position
+        0,                                                               // sub_position_unit
+        current_position,                                                // position_nonce
+        0,                                                               // min_position
+        1,                                                               // max_position
+        60 * PI / 180,                                                   // position_width_radians
+        config_.detent_strength_unit,                                    // detent_strength_unit
+        1,                                                               // endstop_strength_unit
+        config_.snap_point,                                              // snap_point
+        "",                                                              // id
+        0,                                                               // detent_positions_count (FIXED: was id_nonce)
+        {},                                                              // detent_positions
+        0,                                                               // snap_point_bias (FIXED: was detent_positions_count)
+        current_position == 0 ? config_.off_led_hue : config_.on_led_hue // led_hue
     };
     strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
 
@@ -189,7 +189,7 @@ EntityStateUpdate ToggleComponent::updateStateFromKnob(PB_SmartKnobState state)
         // TODO: LED color switching not working - triggerMotorConfigUpdate() called but LEDs don't change color
         // Possible issues: motor task not processing led_hue changes, LED ring task needs different approach,
         // or timing issue with config updates. Need to investigate motor_task.cpp LED handling.
-        triggerMotorConfigUpdate();
+        // triggerMotorConfigUpdate();
     }
 
     last_updated_ms = millis();

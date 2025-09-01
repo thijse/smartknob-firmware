@@ -60,7 +60,7 @@ protected:
 
     std::shared_ptr<Component> active_component_ = nullptr;
 
-    MotorNotifier *motor_notifier_;       // From Apps
+    MotorNotifier *motor_notifier_;        // From Apps
     OSConfigNotifier *os_config_notifier_; // From Apps
     PB_SmartKnobConfig motor_config_ = {
         .detent_strength_unit = 0,

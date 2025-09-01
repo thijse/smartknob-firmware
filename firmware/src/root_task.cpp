@@ -82,16 +82,6 @@ void RootTask::run()
     LOGI("Component system enabled: ComponentManager integration");
     LOGI("RootTask: Starting run() method at %d ms", task_started_at);
 
-    // Verify ComponentManager was created successfully now that logging is available
-    if (component_manager_ == nullptr)
-    {
-        LOGE("RootTask: ComponentManager creation failed!");
-    }
-    else
-    {
-        LOGI("RootTask: ComponentManager created successfully");
-    }
-
     motor_task_.addListener(knob_state_queue_);
 
     serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_settings_tag, [this](PB_ToSmartknob to_smartknob)
@@ -107,7 +97,21 @@ void RootTask::run()
     serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_app_component_tag, [this](PB_ToSmartknob to_smartknob)
                                                    {
                                                        LOGI("RootTask: Received app_component message");
+
+                                                       // Defensive guard: ensure ComponentManager is initialized
+                                                       if (component_manager_ == nullptr)
+                                                       {
+                                                           LOGE("RootTask: ComponentManager not initialized, ignoring app_component message");
+                                                           return;
+                                                       }
+
+                                                       // The 'to_smartknob' object is temporary and lives on the stack.
+                                                       // Its payload 'app_component' will be invalid after this lambda returns.
+                                                       // By passing it BY VALUE to createComponent, we create a temporary copy
+                                                       // for the duration of the call, which is long enough for the
+                                                       // component's constructor to make its own persistent deep copy.
                                                        bool success = component_manager_->createComponent(to_smartknob.payload.app_component);
+
                                                        if (success)
                                                        {
                                                            // Switch to component mode and activate the new component
@@ -183,6 +187,11 @@ void RootTask::run()
     MotorNotifier motor_notifier = MotorNotifier([this](PB_SmartKnobConfig config)
                                                  { applyConfig(config, false); });
 
+    // Initialize component manager BEFORE registering protobuf callbacks to prevent race condition
+    component_manager_ = new ComponentManager(mutex_);
+    component_manager_->setMotorNotifier(&motor_notifier);
+    LOGI("RootTask: ComponentManager initialized early to prevent race condition");
+
     os_config_notifier_.setCallback([this](OSMode os_mode)
                                     {
         this->configuration_->loadOSConfiguration();
@@ -211,9 +220,9 @@ void RootTask::run()
     display_task_->getApps()->setMotorNotifier(&motor_notifier);
     display_task_->getApps()->setOSConfigNotifier(&os_config_notifier_);
 
-    // Initialize component manager with App-based architecture
-    component_manager_ = new ComponentManager(mutex_);
-    component_manager_->setMotorNotifier(&motor_notifier);
+    // ComponentManager was already initialized earlier to prevent race condition
+    // component_manager_ = new ComponentManager(mutex_);
+    // component_manager_->setMotorNotifier(&motor_notifier);
 
     // TODO: move playhaptic to notifier? or other interface to just pass "possible" motor commands not entire object/class.
     reset_task_->setMotorTask(&motor_task_);

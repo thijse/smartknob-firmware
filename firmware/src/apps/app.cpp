@@ -48,7 +48,7 @@ void App::triggerMotorConfigUpdate()
 {
     if (this->motor_notifier != nullptr)
     {
-        motor_notifier->requestUpdate(root_level_motor_config);
+        motor_notifier->requestUpdate(motor_config); // Fixed: use motor_config instead of root_level_motor_config
     }
     else
     {

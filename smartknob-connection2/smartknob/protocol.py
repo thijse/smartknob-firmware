@@ -29,9 +29,12 @@ logger = logging.getLogger(__name__)
 PROTOBUF_PROTOCOL_VERSION = 1
 RETRY_TIMEOUT_MS = 250  # 250ms retry timeout
 
-def reset_esp32(port: str, baud: int = 921600) -> bool:
+def reset_connection(port: str, baud: int = 921600) -> bool:
     """
-    Reset ESP32 by toggling DTR and RTS lines.
+    Reset microcontroller connection by toggling DTR and RTS lines.
+    
+    This function performs a hardware reset of the connected microcontroller
+    (typically ESP32) by using the DTR and RTS control lines of the serial port.
     
     Args:
         port: Serial port (e.g., 'COM9', '/dev/ttyUSB0')
@@ -40,7 +43,7 @@ def reset_esp32(port: str, baud: int = 921600) -> bool:
     Returns:
         True if reset successful, False otherwise
     """
-    logger.info(f"Resetting ESP32 on {port}...")
+    logger.info(f"Resetting microcontroller on {port}...")
     try:
         # Open serial connection with DTR/RTS control
         ser = serial.Serial(port, baud, timeout=1)
@@ -55,9 +58,9 @@ def reset_esp32(port: str, baud: int = 921600) -> bool:
         
         ser.close()
         
-        # Wait for ESP32 to boot
-        logger.info("Waiting for ESP32 to boot...")
-        time.sleep(2.0)  # ESP32 boot time
+        # Wait for microcontroller to boot
+        logger.info("Waiting for microcontroller to boot...")
+        time.sleep(2.0)  # Boot time
         logger.info("Reset complete")
         return True
         

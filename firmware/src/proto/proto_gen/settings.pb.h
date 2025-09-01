@@ -16,7 +16,7 @@ typedef struct _SETTINGS_Screen {
     int32_t min_bright;
     int32_t timeout;
 } SETTINGS_Screen;
-
+ 
 typedef struct _SETTINGS_Beacon {
     bool enabled;
     int32_t brightness;
