@@ -384,22 +384,23 @@ void RootTask::run()
                 motor_task_.playHaptic(true, false);
             }
 
-            // NEW: Check for automatic broadcasting
+            publish(app_state);
+            publishState();
+
+            // Move updateHardware BEFORE checkAndBroadcastState to fix button press timing
+            updateHardware(&app_state);
+
+            // NEW: Check for automatic broadcasting (moved AFTER updateHardware)
             if (auto_broadcast_enabled_)
             {
                 checkAndBroadcastState();
             }
-
-            publish(app_state);
-            publishState();
         }
 
         // current_protocol_->loop();
 
         motor_notifier.loopTick();
         os_config_notifier_.loopTick();
-
-        updateHardware(&app_state);
 
         if (app_state.screen_state.has_been_engaged == true)
         {

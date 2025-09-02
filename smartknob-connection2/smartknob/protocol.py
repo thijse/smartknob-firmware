@@ -255,8 +255,8 @@ class SmartKnobProtocol:
             # Verify CRC32
             calculated_crc = self._calculate_crc32(payload)
             if received_crc != calculated_crc:
-                logger.warning(f"CRC32 mismatch: received 0x{received_crc:08x}, "
-                             f"calculated 0x{calculated_crc:08x}")
+                # logger.warning(f"CRC32 mismatch: received 0x{received_crc:08x}, "
+                #              f"calculated 0x{calculated_crc:08x}")
                 self.stats.crc_errors += 1
                 return None
             
