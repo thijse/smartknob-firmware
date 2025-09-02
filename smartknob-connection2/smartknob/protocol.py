@@ -476,6 +476,51 @@ class SmartKnobProtocol:
         self.stats = ProtocolStats()
 
 
+    async def send_app_component(self, app_component: smartknob_pb2.AppComponent) -> int:
+        """
+        Public helper to send an AppComponent payload.
+        Returns the nonce assigned to the message for optional ACK correlation.
+        """
+        message = smartknob_pb2.ToSmartknob()
+        message.app_component.CopyFrom(app_component)
+        await self._enqueue_message(message)
+        return message.nonce
+
+    async def send_multi_choice(
+        self,
+        component_id: str,
+        title: str,
+        options: List[str],
+        initial_index: int = 0,
+        wrap_around: bool = True,
+        detent_strength_unit: float = 1.5,
+        endstop_strength_unit: float = 1.5,
+        led_hue: int = 200,
+    ) -> int:
+        """
+        Compose and send a MULTI_CHOICE app component payload.
+        Returns the nonce assigned to the message for optional ACK correlation.
+        """
+        app_component = smartknob_pb2.AppComponent()
+        app_component.component_id = component_id
+        # NOTE: Keep numeric literal for compatibility with current proto usage in examples
+        # MULTI_CHOICE = 2
+        app_component.type = 2
+        app_component.display_name = title
+
+        mc = app_component.multi_choice
+        # Fresh message, but be explicit for clarity
+        del mc.options[:]
+        for opt in options or []:
+            mc.options.append(str(opt))
+
+        mc.initial_index = int(initial_index)
+        mc.wrap_around = bool(wrap_around)
+        mc.detent_strength_unit = float(detent_strength_unit)
+        mc.endstop_strength_unit = float(endstop_strength_unit)
+        mc.led_hue = int(led_hue)
+
+        return await self.send_app_component(app_component)
 class SmartKnobConnection:
     """
     SmartKnob connection manager using AnyIO.
