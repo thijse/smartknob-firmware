@@ -42,6 +42,9 @@ public:
     QueueHandle_t getAppSyncQueue();
     QueueHandle_t getSettingsSyncQueue();
 
+    // Component mode control
+    void setComponentMode(bool active);
+
 protected:
     void run();
 

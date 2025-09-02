@@ -2,13 +2,14 @@
 #include "toggle/toggle_component.h"
 #include "multipleChoice/component_multiple_choice.h"
 #include "../util.h"
+#include "../root_task.h"
 #include <logging.h>
 
-ComponentManager::ComponentManager(SemaphoreHandle_t mutex) : screen_mutex_(mutex)
+ComponentManager::ComponentManager(RootTask &root_task, SemaphoreHandle_t mutex) : root_task_(root_task), screen_mutex_(mutex)
 {
     component_mutex_ = xSemaphoreCreateMutex();
 }
- 
+
 ComponentManager::~ComponentManager()
 {
     // Deactivate current component
@@ -26,6 +27,7 @@ void ComponentManager::deactivateAll()
     {
         // Apps don't have deactivate method, just clear reference
         active_component_ = nullptr;
+        root_task_.setComponentMode(false);
         LOGI("ComponentManager: All components deactivated");
     }
 }
@@ -81,6 +83,7 @@ bool ComponentManager::setActiveComponent(const std::string &component_id)
     }
 
     active_component_ = it->second;
+    root_task_.setComponentMode(true);
     render(); // CRITICAL: Apps pattern - always call render when setting active
     return true;
 }

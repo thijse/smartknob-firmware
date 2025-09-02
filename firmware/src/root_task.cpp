@@ -188,7 +188,7 @@ void RootTask::run()
                                                  { applyConfig(config, false); });
 
     // Initialize component manager BEFORE registering protobuf callbacks to prevent race condition
-    component_manager_ = new ComponentManager(mutex_);
+    component_manager_ = new ComponentManager(*this, mutex_);
     component_manager_->setMotorNotifier(&motor_notifier);
     LOGI("RootTask: ComponentManager initialized early to prevent race condition");
 
@@ -427,87 +427,156 @@ void RootTask::updateHardware(AppState *app_state)
 
     if (configuration_loaded_)
     {
-        switch (latest_sensors_state_.strain.virtual_button_code)
+        // ✅ CHECK: Handle button presses differently in component mode
+        if (component_mode_)
         {
+            // Static variable to track button state transitions
+            static uint8_t last_virtual_button_code = VIRTUAL_BUTTON_IDLE;
+            uint8_t current_virtual_button_code = latest_sensors_state_.strain.virtual_button_code;
 
-        case VIRTUAL_BUTTON_SHORT_PRESSED:
-            if (last_strain_pressed_played_ != VIRTUAL_BUTTON_SHORT_PRESSED)
+            // In component mode: include button state in smartknob_state instead of navigation
+            switch (current_virtual_button_code)
             {
+            case VIRTUAL_BUTTON_SHORT_PRESSED:
+                // Set screen engagement for component mode too
                 app_state->screen_state.has_been_engaged = true;
-                if (app_state->screen_state.awake_until < millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL / 2), settings_.screen.timeout)) // If half of the time of the last interaction has passed, reset allow for engage to be detected again.
+                if (app_state->screen_state.awake_until < millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL / 2), settings_.screen.timeout))
                 {
-                    app_state->screen_state.awake_until = millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL), settings_.screen.timeout); // stay awake for 4 seconds after last interaction
+                    app_state->screen_state.awake_until = millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL), settings_.screen.timeout);
                 }
 
-                LOGD("Handling short press");
-                motor_task_.playHaptic(true, false);
-                last_strain_pressed_played_ = VIRTUAL_BUTTON_SHORT_PRESSED;
-            }
-            /* code */
-            break;
-        case VIRTUAL_BUTTON_LONG_PRESSED:
-            if (last_strain_pressed_played_ != VIRTUAL_BUTTON_LONG_PRESSED)
-            {
+                // Increment press nonce for short press
+                latest_state_.press_nonce = ++press_count_;
+                // Only trigger haptic on state transition (not every loop)
+                if (last_virtual_button_code != VIRTUAL_BUTTON_SHORT_PRESSED)
+                {
+                    motor_task_.playHaptic(true, false); // Short press haptic
+                }
+                break;
+            case VIRTUAL_BUTTON_SHORT_RELEASED:
+                // Only log on state transition
+                if (last_virtual_button_code == VIRTUAL_BUTTON_SHORT_PRESSED)
+                {
+                    motor_task_.playHaptic(false, false);
+                }
+                break;
+            case VIRTUAL_BUTTON_LONG_PRESSED:
+                // Set screen engagement for component mode too
                 app_state->screen_state.has_been_engaged = true;
-                if (app_state->screen_state.awake_until < millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL / 2), settings_.screen.timeout)) // If half of the time of the last interaction has passed, reset allow for engage to be detected again.
+                if (app_state->screen_state.awake_until < millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL / 2), settings_.screen.timeout))
                 {
-                    app_state->screen_state.awake_until = millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL), settings_.screen.timeout); // stay awake for 4 seconds after last interaction
+                    app_state->screen_state.awake_until = millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL), settings_.screen.timeout);
                 }
 
-                LOGD("Handling long press");
-
-                motor_task_.playHaptic(true, true);
-                last_strain_pressed_played_ = VIRTUAL_BUTTON_LONG_PRESSED;
-                NavigationEvent event = NavigationEvent::LONG;
-
-                //! GET ACTIVE FLOW? SO WE DONT HAVE DIFFERENT
-                // display_task_->getActiveFlow()->handleNavigationEvent(event);
-                switch (display_task_->getErrorHandlingFlow()->getErrorType())
+                // Increment press nonce for long press (Python can distinguish by timing)
+                latest_state_.press_nonce = ++press_count_;
+                // Only trigger haptic on state transition (not every loop)
+                if (last_virtual_button_code != VIRTUAL_BUTTON_LONG_PRESSED)
                 {
-                case NO_ERROR:
-                    // With simplified OSMode, always handle navigation
-                    display_task_->getApps()->handleNavigationEvent(event);
-                    break;
-                // Network error handling removed for serial-only mode
-                default:
-                    break;
+                    motor_task_.playHaptic(true, true); // Long press haptic
                 }
-            }
-            break;
-        case VIRTUAL_BUTTON_SHORT_RELEASED:
-            if (last_strain_pressed_played_ != VIRTUAL_BUTTON_SHORT_RELEASED)
-            {
-                LOGD("Handling short press released");
-
-                motor_task_.playHaptic(false, false);
-                last_strain_pressed_played_ = VIRTUAL_BUTTON_SHORT_RELEASED;
-                NavigationEvent event = NavigationEvent::SHORT;
-                switch (display_task_->getErrorHandlingFlow()->getErrorType())
+                break;
+            case VIRTUAL_BUTTON_LONG_RELEASED:
+                // Only log on state transition
+                if (last_virtual_button_code == VIRTUAL_BUTTON_LONG_PRESSED)
                 {
-                case NO_ERROR:
-                    // With simplified OSMode, always handle navigation
-                    display_task_->getApps()->handleNavigationEvent(event);
-                    break;
-                // Network error handling removed for serial-only mode
-                default:
-                    break;
+                    motor_task_.playHaptic(false, false);
                 }
+                break;
+            default:
+                break;
             }
-            break;
-        case VIRTUAL_BUTTON_LONG_RELEASED:
 
-            if (last_strain_pressed_played_ != VIRTUAL_BUTTON_LONG_RELEASED)
-            {
-                LOGD("Handling long press released");
+            // Update last state for next iteration
+            last_virtual_button_code = current_virtual_button_code;
 
-                motor_task_.playHaptic(false, false);
-                last_strain_pressed_played_ = VIRTUAL_BUTTON_LONG_RELEASED;
-            }
-            break;
-        default:
-            last_strain_pressed_played_ = VIRTUAL_BUTTON_IDLE;
-            break;
+            // ✅ DON'T RETURN! Let display/LED updates continue below
         }
+        else
+        {
+            // Normal app navigation (existing code)
+            switch (latest_sensors_state_.strain.virtual_button_code)
+            {
+
+            case VIRTUAL_BUTTON_SHORT_PRESSED:
+                if (last_strain_pressed_played_ != VIRTUAL_BUTTON_SHORT_PRESSED)
+                {
+                    app_state->screen_state.has_been_engaged = true;
+                    if (app_state->screen_state.awake_until < millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL / 2), settings_.screen.timeout)) // If half of the time of the last interaction has passed, reset allow for engage to be detected again.
+                    {
+                        app_state->screen_state.awake_until = millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL), settings_.screen.timeout); // stay awake for 4 seconds after last interaction
+                    }
+
+                    LOGD("Handling short press");
+                    motor_task_.playHaptic(true, false);
+                    last_strain_pressed_played_ = VIRTUAL_BUTTON_SHORT_PRESSED;
+                }
+                /* code */
+                break;
+            case VIRTUAL_BUTTON_LONG_PRESSED:
+                if (last_strain_pressed_played_ != VIRTUAL_BUTTON_LONG_PRESSED)
+                {
+                    app_state->screen_state.has_been_engaged = true;
+                    if (app_state->screen_state.awake_until < millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL / 2), settings_.screen.timeout)) // If half of the time of the last interaction has passed, reset allow for engage to be detected again.
+                    {
+                        app_state->screen_state.awake_until = millis() + max((KNOB_ENGAGED_TIMEOUT_PHYSICAL), settings_.screen.timeout); // stay awake for 4 seconds after last interaction
+                    }
+
+                    LOGD("Handling long press");
+
+                    motor_task_.playHaptic(true, true);
+                    last_strain_pressed_played_ = VIRTUAL_BUTTON_LONG_PRESSED;
+                    NavigationEvent event = NavigationEvent::LONG;
+
+                    //! GET ACTIVE FLOW? SO WE DONT HAVE DIFFERENT
+                    // display_task_->getActiveFlow()->handleNavigationEvent(event);
+                    switch (display_task_->getErrorHandlingFlow()->getErrorType())
+                    {
+                    case NO_ERROR:
+                        // With simplified OSMode, always handle navigation
+                        display_task_->getApps()->handleNavigationEvent(event);
+                        break;
+                    // Network error handling removed for serial-only mode
+                    default:
+                        break;
+                    }
+                }
+                break;
+            case VIRTUAL_BUTTON_SHORT_RELEASED:
+                if (last_strain_pressed_played_ != VIRTUAL_BUTTON_SHORT_RELEASED)
+                {
+                    LOGD("Handling short press released");
+
+                    motor_task_.playHaptic(false, false);
+                    last_strain_pressed_played_ = VIRTUAL_BUTTON_SHORT_RELEASED;
+                    NavigationEvent event = NavigationEvent::SHORT;
+                    switch (display_task_->getErrorHandlingFlow()->getErrorType())
+                    {
+                    case NO_ERROR:
+                        // With simplified OSMode, always handle navigation
+                        display_task_->getApps()->handleNavigationEvent(event);
+                        break;
+                    // Network error handling removed for serial-only mode
+                    default:
+                        break;
+                    }
+                }
+                break;
+            case VIRTUAL_BUTTON_LONG_RELEASED:
+
+                if (last_strain_pressed_played_ != VIRTUAL_BUTTON_LONG_RELEASED)
+                {
+                    LOGD("Handling long press released");
+
+                    motor_task_.playHaptic(false, false);
+                    last_strain_pressed_played_ = VIRTUAL_BUTTON_LONG_RELEASED;
+                }
+                break;
+            default:
+                last_strain_pressed_played_ = VIRTUAL_BUTTON_IDLE;
+                break;
+            }
+        } // End of else block for normal navigation
     }
 
 #endif
@@ -672,6 +741,12 @@ void RootTask::setMaxBroadcastRate(uint32_t rate_hz)
 {
     max_broadcast_interval_ = 1000 / rate_hz; // Convert Hz to ms
     LOGI("Max broadcast rate set to %u Hz (%u ms interval)", rate_hz, max_broadcast_interval_);
+}
+
+void RootTask::setComponentMode(bool active)
+{
+    component_mode_ = active;
+    LOGI("Component mode set to: %s", active ? "active" : "inactive");
 }
 
 bool RootTask::shouldBroadcastState(const PB_SmartKnobState &current_state)

@@ -10,11 +10,14 @@
 #include "../notify/os_config_notifier/os_config_notifier.h"
 #include "component.h"
 
+// Forward declaration
+class RootTask;
+
 class ComponentManager
 {
 
 public:
-    ComponentManager(SemaphoreHandle_t mutex);
+    ComponentManager(RootTask &root_task, SemaphoreHandle_t mutex);
     ~ComponentManager(); // Add explicit destructor declaration
 
     // === APPS-PATTERN METHODS (keep these exactly) ===
@@ -53,6 +56,7 @@ private:
     std::shared_ptr<Component> createComponentByType(PB_ComponentType type, PB_AppComponent config); // Pass by value
 
 protected:
+    RootTask &root_task_;
     SemaphoreHandle_t screen_mutex_;
     SemaphoreHandle_t component_mutex_; // Like app_mutex_ but for components
 

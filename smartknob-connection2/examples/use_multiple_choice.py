@@ -10,6 +10,7 @@ import sys
 import os
 import logging
 import anyio
+import anyio.abc
 from datetime import datetime
 
 # Add smartknob-connection2 directory to path for imports
@@ -33,37 +34,62 @@ class MultipleChoiceMonitor:
         self.last_position = None
         self.component_active = False
         self.button_pressed = False
+        self.last_press_nonce = 0  # Track press nonce to detect new presses
+        # This is our message queue (an anyio channel) to decouple the fast
+        # message receiving from the slow message processing/printing.
+        self.send_channel: anyio.abc.ObjectSendStream
+        self.receive_channel: anyio.abc.ObjectReceiveStream
+        self.send_channel, self.receive_channel = anyio.create_memory_object_stream(max_buffer_size=4000)
         
     def on_message(self, msg):
-        """Handle incoming messages from the device."""
-        msg_type = msg.WhichOneof("payload")
+        """
+        FAST callback. Do not block here.
+        Immediately sends the message to a processing task via the channel.
+        """
+        try:
+            # This is a non-blocking send.
+            self.send_channel.send_nowait(msg)
+        except anyio.WouldBlock:
+            # Safety valve: If the consumer is too slow, we drop intermediate
+            # messages instead of letting them pile up and crash the serial buffer.
+            # For UI updates, this is the correct behavior.
+            print("⚠️  WARNING: Message queue full, dropping message to prevent blocking")
+            pass
+
+    async def _message_processor_task(self):
+        """
+        SLOW consumer. Reads messages from the channel and performs slow
+        I/O operations like printing to the console.
+        """
+        async for msg in self.receive_channel:
+            msg_type = msg.WhichOneof("payload")
         
-        if msg_type == 'log':
-            message = msg.log.msg
-            # Check for component activation
-            if 'Component mode active' in message:
-                self.component_active = True
-                
-        elif msg_type == 'smartknob_state':
-            if self.component_active:
-                state = msg.smartknob_state
-                current_position = state.current_position
-                
-                # Check for button press
-                if hasattr(state, 'pressed') and state.pressed:
-                    self.button_pressed = True
+            if msg_type == 'log':
+                message = msg.log.msg
+                # Check for component activation
+                if 'Component mode active' in message:
+                    if (not self.component_active):
+                        self.component_active = True
+                        print("✅ Component created successfully!")
+
+            elif msg_type == 'smartknob_state':
+                if self.component_active:
+                    state = msg.smartknob_state
+                    current_position = state.current_position
                     timestamp = datetime.now().strftime("%H:%M:%S")
-                    selected_value = self.get_selected_value(current_position)
-                    print(f"[{timestamp}] 🔘 SELECTED: {selected_value} (index {current_position})")
-                
-                # Only print when position actually changes
-                #print(f"unfiltered: [{timestamp}] {selected_value} ({current_position})")
-                #if self.last_position is not None and current_position != self.last_position:
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                selected_value = self.get_selected_value(current_position)
-                print(f"[{timestamp}] {selected_value} ({current_position})")
-                
-                self.last_position = current_position
+                    
+                    # Check for button press using press_nonce - IMMEDIATE FEEDBACK
+                    if hasattr(state, 'press_nonce') and state.press_nonce != self.last_press_nonce:
+                        self.button_pressed = True
+                        self.last_press_nonce = state.press_nonce
+                        selected_value = self.get_selected_value(current_position)
+                        print(f"[{timestamp}] 🔘 SELECTED: {selected_value} (index {current_position}, nonce={state.press_nonce})")
+                    
+                    # Show position changes only when position actually changes
+                    elif self.last_position != current_position:
+                        selected_value = self.get_selected_value(current_position)
+                        print(f"[{timestamp}] {selected_value} ({current_position})")
+                        self.last_position = current_position
 
     def get_selected_value(self, position):
         """Get the selected value for a position."""
@@ -105,6 +131,8 @@ class MultipleChoiceMonitor:
         multi_choice.led_hue = 200  # Blue color
         
         # Send message
+        self.component_active = False
+        
         await self.connection.protocol._enqueue_message(to_smartknob)
         
         # Wait for component creation by polling component_active flag
@@ -117,11 +145,11 @@ class MultipleChoiceMonitor:
                 return False
             await anyio.sleep(0.1)  # Check every 100ms
         
-        print("✅ Component created successfully!")
+        # Component will be created successfully and logged in on_message
         return True
 
     async def monitor_selection(self, duration_seconds=None):
-        """Monitor selection changes."""
+        """Simplified monitoring - all logging happens in on_message for immediate feedback."""
         print(f"Multiple Choice Monitor - {len(self.options)} options")
         print("=" * 50)
         print("Options:", ", ".join(self.options))
@@ -130,16 +158,14 @@ class MultipleChoiceMonitor:
         print("Press Ctrl+C to stop monitoring.")
         print("")
         
-        start_time = anyio.current_time()
-        
+        # Just wait - all the real work happens in on_message now
         try:
             if duration_seconds:
-                while (anyio.current_time() - start_time) < duration_seconds:
-                    await anyio.sleep(0.1)
+                await anyio.sleep(duration_seconds)
             else:
-                # Run indefinitely
+                # Run indefinitely with longer sleep since we're not doing work here
                 while True:
-                    await anyio.sleep(0.1)
+                    await anyio.sleep(1.0)
                     
         except KeyboardInterrupt:
             print("\nStopped by user")
@@ -173,8 +199,10 @@ async def main():
             
             # Start protocol read loop
             async with anyio.create_task_group() as tg:
-                # Start protocol read loop
+                # Start protocol read loop (the "fast producer")
                 tg.start_soon(connection.protocol.read_loop)
+                # Start our new, decoupled message processor (the "slow consumer")
+                tg.start_soon(monitor._message_processor_task)
                 
                 # Wait for initial connection
                 await anyio.sleep(1.0)
