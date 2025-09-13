@@ -72,7 +72,7 @@ class ToggleStateMonitor:
                 
                 self.last_position = current_position
 
-    async def create_toggle_component(self, component_id="toggle", title="Toggle", off_label="OFF", on_label="ON"):
+    async def create_toggle_component(self, component_id="toggle", title="AzurionEye", off_label="STOP", on_label="START"):
         """Create a toggle component with specified labels."""
         self.off_label = off_label
         self.on_label = on_label
@@ -144,7 +144,8 @@ async def main():
             print("✅ Connected!")
             
             # Create monitor with custom labels
-            monitor = ToggleStateMonitor(connection, off_label="Aan", on_label="Uit")
+            monitor = ToggleStateMonitor(connection, off_label="STOP", on_label="START"
+                                         )
             
             # Set up message handler
             connection.set_message_callback(monitor.on_message)
@@ -160,9 +161,9 @@ async def main():
                 # Create toggle component
                 await monitor.create_toggle_component(
                     component_id="clean_toggle",
-                    title="Toggle Monitor", 
-                    off_label="Aan",
-                    on_label="Uit"
+                    title="AzurionEye", 
+                    off_label="STOP",
+                    on_label="START"
                 )
                 
                 # Monitor state changes

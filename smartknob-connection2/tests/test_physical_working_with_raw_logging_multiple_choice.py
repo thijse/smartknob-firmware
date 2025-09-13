@@ -61,11 +61,16 @@ class PhysicalMultipleChoiceTester:
         self.setup_raw_logging()
         
     def setup_raw_logging(self):
-        """Set up raw data logging to file."""
+        """Set up raw data logging to file under project logs directory."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Write logs to smartknob-connection2/logs/test_physical_working_with_raw_logging_multiple_choice/<timestamped>.log
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        log_dir = os.path.join(project_root, 'logs', 'test_physical_working_with_raw_logging_multiple_choice')
+        os.makedirs(log_dir, exist_ok=True)
         log_filename = f"smartknob_multiple_choice_{timestamp}.log"
-        self.raw_log_file = open(log_filename, 'wb')  # Binary mode for raw data
-        print(f"📝 Raw serial data will be logged to: {log_filename}")
+        full_path = os.path.join(log_dir, log_filename)
+        self.raw_log_file = open(full_path, 'wb')  # Binary mode for raw data
+        print(f"📝 Raw serial data will be logged to: {full_path}")
         
     def on_raw_data(self, data: bytes):
         """Handle raw serial data for logging and crash detection."""

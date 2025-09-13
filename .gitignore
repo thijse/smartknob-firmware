@@ -52,3 +52,6 @@ firmware/data/config.pb
 .cache/
 compile_commands.json
 proto_gen_backup
+
+# Python client and examples/tests logs
+smartknob-connection2/logs/

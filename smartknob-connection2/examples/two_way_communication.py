@@ -128,12 +128,18 @@ def main():
     if args.show_only:
         show_only = set(args.show_only.split(','))
     
-    # Set up log file
+    # Set up log file under project logs directory (unless --logfile provided)
     if args.logfile:
         log_file_path = args.logfile
+        log_dir = os.path.dirname(log_file_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file_path = f"smartknob_twoway_{timestamp}.log"
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        log_dir = os.path.join(project_root, 'logs', 'two_way_communication')
+        os.makedirs(log_dir, exist_ok=True)
+        log_file_path = os.path.join(log_dir, f"smartknob_twoway_{timestamp}.log")
     
     # Open log file
     log_file = open(log_file_path, 'w', encoding='utf-8')
