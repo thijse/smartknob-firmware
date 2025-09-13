@@ -83,5 +83,6 @@ protected:
 
     MotorNotifier *motor_notifier;
 
-    lv_obj_t *screen = lv_obj_create(NULL);
+    // Create LVGL screen lazily under the shared LVGL mutex in App constructor
+    lv_obj_t *screen = nullptr;
 };

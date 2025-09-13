@@ -7,6 +7,7 @@
 #include "lvgl.h"
 
 #include <Arduino.h>
+#include <semphr.h>
 
 #include "proto/proto_gen/smartknob.pb.h"
 #include "task.h"
@@ -28,6 +29,9 @@ public:
 
     void setBrightness(uint16_t brightness);
     CustomApps *getApps();
+
+    // Expose the shared LVGL mutex so all LVGL users can synchronize on the same lock
+    SemaphoreHandle_t getMutex() { return mutex_; }
 
     void enableDemo();
 

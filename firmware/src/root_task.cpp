@@ -188,7 +188,9 @@ void RootTask::run()
                                                  { applyConfig(config, false); });
 
     // Initialize component manager BEFORE registering protobuf callbacks to prevent race condition
-    component_manager_ = new ComponentManager(*this, mutex_);
+    // Use the shared LVGL mutex from DisplayTask when available so all LVGL access is synchronized
+    SemaphoreHandle_t lvgl_mutex = (display_task_ != nullptr) ? display_task_->getMutex() : mutex_;
+    component_manager_ = new ComponentManager(*this, lvgl_mutex);
     component_manager_->setMotorNotifier(&motor_notifier);
     LOGI("RootTask: ComponentManager initialized early to prevent race condition");
 

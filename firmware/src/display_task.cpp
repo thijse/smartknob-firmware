@@ -64,6 +64,8 @@ void DisplayTask::run()
     while (1)
     {
         {
+            // Guard LVGL task handler with the same mutex used by all LVGL callers
+            SemaphoreGuard lock(mutex_);
             lv_task_handler();
         }
         vTaskDelay(pdMS_TO_TICKS(5));

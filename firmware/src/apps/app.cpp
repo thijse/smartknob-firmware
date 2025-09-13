@@ -3,6 +3,12 @@
 
 App::App(SemaphoreHandle_t mutex) : mutex_(mutex)
 {
+    // All LVGL calls must be guarded by the shared LVGL mutex
+    SemaphoreGuard lock(mutex_);
+    if (screen == nullptr)
+    {
+        screen = lv_obj_create(NULL);
+    }
     LOGI("App: Constructor called, screen = %p", screen);
     if (screen != nullptr)
     {
@@ -19,6 +25,12 @@ App::App(SemaphoreHandle_t mutex) : mutex_(mutex)
 
 App::App(SemaphoreHandle_t mutex, int8_t next, int8_t back) : mutex_(mutex), next_(next), back_(back)
 {
+    // All LVGL calls must be guarded by the shared LVGL mutex
+    SemaphoreGuard lock(mutex_);
+    if (screen == nullptr)
+    {
+        screen = lv_obj_create(NULL);
+    }
     LOGI("App: Constructor (with nav) called, screen = %p", screen);
     if (screen != nullptr)
     {
