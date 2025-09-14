@@ -18,7 +18,7 @@ public:
     ToggleComponent(SemaphoreHandle_t mutex, const PB_AppComponent &config);
 
     // ========== Component Interface ==========
-    bool configure(const PB_AppComponent &config) override { return configured_; } // Return current status
+    bool configure(const PB_AppComponent &config) override;
     const char *getComponentType() const override { return "toggle"; }
 
     // ========== State Interface ==========

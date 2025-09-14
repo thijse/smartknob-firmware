@@ -42,34 +42,50 @@ def reset_esp32(port, baud=921600):
 class ToggleStateMonitor:
     """Clean toggle state monitoring."""
     
-    def __init__(self, connection, off_label="OFF", on_label="ON"):
+    def __init__(self, connection, off_label="OFF", on_label="ON", log_file=None):
         self.connection = connection
         self.off_label = off_label
         self.on_label = on_label
         self.last_position = None
         self.component_active = False
-        
+        self.log_file = log_file  # File handle for logging firmware log messages
+
+    def _log_to_file(self, line: str):
+        try:
+            if self.log_file:
+                self.log_file.write(line + "\n")
+                self.log_file.flush()
+        except Exception:
+            pass
+
     def on_message(self, msg):
         """Handle incoming messages from the device."""
         msg_type = msg.WhichOneof("payload")
         
         if msg_type == 'log':
-            message = msg.log.msg
-            # Check for component activation
-            if 'Component mode active' in message:
+            origin = getattr(msg.log, 'origin', '')
+            text = getattr(msg.log, 'msg', '')
+            level = getattr(msg.log, 'level', 0)
+            timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            log_line = f"[{timestamp}] 📝 LOG [{origin}] {text}"
+            self._log_to_file(log_line)
+            # Check for component activation (do not print to console, only update state)
+            if 'Component mode active' in str(text):
                 self.component_active = True
-                
+
         elif msg_type == 'smartknob_state':
             if self.component_active:
                 state = msg.smartknob_state
                 current_position = state.current_position
-                
+
                 # Only print when position actually changes
                 if self.last_position is not None and current_position != self.last_position:
                     timestamp = datetime.now().strftime("%H:%M:%S")
                     state_name = self.on_label if current_position > 0 else self.off_label
                     print(f"[{timestamp}] {state_name} ({current_position})")
-                
+                    # Also record to file
+                    self._log_to_file(f"[{timestamp}] STATE {state_name} ({current_position})")
+
                 self.last_position = current_position
 
     async def create_toggle_component(self, component_id="toggle", title="AzurionEye", off_label="STOP", on_label="START"):
@@ -134,9 +150,18 @@ async def main():
     
     port = ports[0]
     print(f"📡 Connecting to SmartKnob on {port}...")
+
+    # Set up log file
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    log_dir = os.path.join(project_root, 'logs', 'use_toggle_button')
+    os.makedirs(log_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = os.path.join(log_dir, f"toggle_{timestamp}.log")
+    log_file = open(log_path, 'w', encoding='utf-8')
+    print(f"📝 Logging to file: {log_path}")
     
     # Reset for clean state
-    reset_esp32(port)
+    # reset_esp32(port)
     
     try:
         # Connect and start monitoring
@@ -144,8 +169,7 @@ async def main():
             print("✅ Connected!")
             
             # Create monitor with custom labels
-            monitor = ToggleStateMonitor(connection, off_label="STOP", on_label="START"
-                                         )
+            monitor = ToggleStateMonitor(connection, off_label="STOP", on_label="START", log_file=log_file)
             
             # Set up message handler
             connection.set_message_callback(monitor.on_message)
@@ -161,16 +185,21 @@ async def main():
                 # Create toggle component
                 await monitor.create_toggle_component(
                     component_id="clean_toggle",
-                    title="AzurionEye", 
+                    title="AzurionEye",
                     off_label="STOP",
                     on_label="START"
                 )
                 
                 # Monitor state changes
                 await monitor.monitor_toggle_state()
-        
+    
     except Exception as e:
         print(f"❌ Error: {e}")
+    finally:
+        try:
+            log_file.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     try:

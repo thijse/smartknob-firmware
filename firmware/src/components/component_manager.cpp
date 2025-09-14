@@ -23,9 +23,10 @@ ComponentManager::~ComponentManager()
 
 void ComponentManager::deactivateAll()
 {
+    SemaphoreGuard lock(component_mutex_);
     if (active_component_)
     {
-        // Apps don't have deactivate method, just clear reference
+        // Clear active reference under lock to prevent races
         active_component_ = nullptr;
         root_task_.setComponentMode(false);
         LOGI("ComponentManager: All components deactivated");
@@ -52,12 +53,9 @@ EntityStateUpdate ComponentManager::update(AppState state)
 
     if (active_component_ != nullptr)
     {
-        // Only send state updates to component using config with same identifier.
-        if (strcmp(state.motor_state.config.id, active_component_->app_id) == 0)
-        {
-            new_state_update = active_component_->updateStateFromKnob(state.motor_state);
-            active_component_->updateStateFromSystem(state);
-        }
+        // Relaxed: always forward state to the active component
+        new_state_update = active_component_->updateStateFromKnob(state.motor_state);
+        active_component_->updateStateFromSystem(state);
     }
 
     return new_state_update;
@@ -83,6 +81,7 @@ bool ComponentManager::setActiveComponent(const std::string &component_id)
     }
 
     active_component_ = it->second;
+    LOGI("ComponentManager: setActiveComponent('%s') type=%d", component_id.c_str(), (int)active_component_->getType());
     root_task_.setComponentMode(true);
     render(); // CRITICAL: Apps pattern - always call render when setting active
     return true;
@@ -100,51 +99,124 @@ bool ComponentManager::createComponent(PB_AppComponent config) // Pass by value
     LOGI("ComponentManager: Creating component '%s' (type=%d)",
          config.component_id, config.type);
 
-    // Check if component already exists
+    bool need_activate = false;
+    bool need_refresh = false;
+
     std::string component_id(config.component_id);
-    auto existing = components_.find(component_id);
 
-    if (existing != components_.end())
     {
-        LOGI("ComponentManager: Reconfiguring existing component '%s'", config.component_id);
+        // Serialize all mutations and pointer updates under component_mutex_
+        SemaphoreGuard lock(component_mutex_);
 
-        // Reconfigure existing component
-        bool success = existing->second->configure(config);
-        if (!success)
+        auto existing = components_.find(component_id);
+
+        if (existing != components_.end())
         {
-            LOGE("ComponentManager: Failed to reconfigure component '%s'", config.component_id);
-            return false;
+            // If type changed for same ID, destroy and recreate
+            PB_ComponentType current_type = existing->second->getType();
+            if (current_type != config.type)
+            {
+                LOGW("ComponentManager: Type change for '%s': %d -> %d, recreating component",
+                     config.component_id, (int)current_type, (int)config.type);
+
+                bool wasActive = (active_component_ == existing->second);
+
+                // If active, clear active pointer first to prevent concurrent deref
+                if (wasActive)
+                {
+                    active_component_ = nullptr;
+                    root_task_.setComponentMode(false);
+                }
+
+                // Erase existing instance (shared_ptr will release when last ref drops)
+                components_.erase(existing);
+
+                // Create new instance of requested type
+                auto new_component = createComponentByType(config.type, config);
+                if (!new_component)
+                {
+                    LOGE("ComponentManager: Failed to recreate component '%s' of type %d",
+                         config.component_id, (int)config.type);
+                    return false;
+                }
+
+                // Store and wire motor notifier
+                components_[component_id] = std::move(new_component);
+                if (motor_notifier_ != nullptr)
+                {
+                    components_[component_id]->setMotorNotifier(motor_notifier_);
+                }
+
+                // If it was active, re-activate after releasing the lock
+                if (wasActive)
+                {
+                    active_component_ = components_[component_id];
+                    root_task_.setComponentMode(true);
+                    need_activate = true; // defer render/motor update until after unlocking
+                }
+
+                LOGI("ComponentManager: Component '%s' recreated successfully", config.component_id);
+            }
+            else
+            {
+                LOGI("ComponentManager: Reconfiguring existing component '%s'", config.component_id);
+
+                // Reconfigure existing component of same type
+                bool success = existing->second->configure(config);
+                if (!success)
+                {
+                    LOGE("ComponentManager: Failed to reconfigure component '%s'", config.component_id);
+                    return false;
+                }
+
+                // If this component is currently active, refresh UI and motor config after unlocking
+                if (active_component_ == existing->second)
+                {
+                    need_refresh = true;
+                }
+
+                LOGI("ComponentManager: Component '%s' reconfigured successfully", config.component_id);
+            }
         }
+        else
+        {
+            // Create new component
+            LOGI("ComponentManager: About to create component of type %d", config.type);
+            auto component = createComponentByType(config.type, config); // Pass the copy forward
+            if (!component)
+            {
+                LOGE("ComponentManager: Failed to create component of type %d", config.type);
+                return false;
+            }
+            LOGI("ComponentManager: Component '%s' created and configured in constructor", config.component_id);
 
-        LOGI("ComponentManager: Component '%s' reconfigured successfully", config.component_id);
-        return true;
-    }
+            // Store the component
+            components_[component_id] = std::move(component);
 
-    // Create new component
-    LOGI("ComponentManager: About to create component of type %d", config.type);
-    auto component = createComponentByType(config.type, config); // Pass the copy forward
-    if (!component)
+            // Set motor notifier if available (like Apps do)
+            if (motor_notifier_)
+            {
+                components_[component_id]->setMotorNotifier(motor_notifier_);
+            }
+
+            LOGI("ComponentManager: Component '%s' created successfully", config.component_id);
+        }
+    } // unlock component_mutex_
+
+    // Perform render/motor updates outside the lock to avoid deadlocks and long critical sections
+    if (need_activate || need_refresh)
     {
-        LOGE("ComponentManager: Failed to create component of type %d", config.type);
-        return false;
-    }
-    LOGI("ComponentManager: Component '%s' created and configured in constructor", config.component_id);
-
-    // Store the component
-    components_[component_id] = std::move(component);
-
-    // Set motor notifier if available (like Apps do)
-    if (motor_notifier_)
-    {
-        components_[component_id]->setMotorNotifier(motor_notifier_);
+        render();                   // Ensure screen reflects the new/updated configuration
+        triggerMotorConfigUpdate(); // Push updated haptics/LEDs to MotorTask
     }
 
-    LOGI("ComponentManager: Component '%s' created successfully", config.component_id);
     return true;
 }
 
 bool ComponentManager::destroyComponent(const std::string &component_id)
 {
+    SemaphoreGuard lock(component_mutex_);
+
     auto it = components_.find(component_id);
 
     if (it == components_.end())
@@ -153,10 +225,11 @@ bool ComponentManager::destroyComponent(const std::string &component_id)
         return false;
     }
 
-    // If this is the active component, deactivate it
+    // If this is the active component, deactivate it under lock
     if (active_component_ == it->second)
     {
         active_component_ = nullptr; // Just clear the reference (Apps don't have deactivate)
+        root_task_.setComponentMode(false);
     }
 
     // Remove from map (shared_ptr will auto-delete)
@@ -173,20 +246,47 @@ void ComponentManager::setMotorNotifier(MotorNotifier *motor_notifier)
 
 void ComponentManager::triggerMotorConfigUpdate()
 {
-    if (active_component_)
+    // Make thread-safe local copies under lock, then operate without holding the mutex
+    std::shared_ptr<Component> local_active;
+    MotorNotifier *local_notifier = nullptr;
+    PB_SmartKnobConfig local_blocked_cfg;
+
     {
-        if (this->motor_notifier_ != nullptr)
+        SemaphoreGuard lock(component_mutex_);
+        local_active = active_component_;
+        local_notifier = motor_notifier_;
+        local_blocked_cfg = blocked_motor_config;
+    }
+
+    if (local_active)
+    {
+        if (local_notifier != nullptr)
         {
-            LOGI("ComponentManager: Triggering motor config update for active component");
-            motor_notifier_->requestUpdate(active_component_->getMotorConfig());
+            auto cfg = local_active->getMotorConfig();
+            LOGI("ComponentManager: Triggering motor update for active='%s' type=%d cfg.id='%s' pos=%ld max=%ld hue=%d",
+                 local_active->getComponentId(),
+                 (int)local_active->getType(),
+                 cfg.id,
+                 (long)cfg.position,
+                 (long)cfg.max_position,
+                 (int)cfg.led_hue);
+            local_notifier->requestUpdate(cfg);
+        }
+        else
+        {
+            LOGW("ComponentManager: motor_notifier_ is null for active component");
         }
     }
     else
     {
-        if (this->motor_notifier_ != nullptr)
+        if (local_notifier != nullptr)
         {
             LOGI("ComponentManager: Triggering motor config update for blocked state");
-            motor_notifier_->requestUpdate(blocked_motor_config);
+            local_notifier->requestUpdate(local_blocked_cfg);
+        }
+        else
+        {
+            LOGW("ComponentManager: motor_notifier_ is null for blocked state");
         }
     }
 }
@@ -208,6 +308,8 @@ std::shared_ptr<Component> ComponentManager::find(const std::string &component_i
 
 std::shared_ptr<Component> ComponentManager::getActiveComponent()
 {
+    SemaphoreGuard lock(component_mutex_);
+    // Return a copy-by-value under lock to safely increment refcount
     return active_component_;
 }
 

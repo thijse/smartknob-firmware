@@ -28,18 +28,41 @@ logging.basicConfig(level=logging.ERROR)
 class MultipleChoiceMonitor:
     """Clean multiple choice monitoring."""
     
-    def __init__(self, connection, options=None):
+    def __init__(self, connection, options=None, log_file=None):
         self.connection = connection
         self.options = options or ["Option 1", "Option 2", "Option 3"]
         self.last_position = None
         self.component_active = False
         self.button_pressed = False
         self.last_press_nonce = 0  # Track press nonce to detect new presses
+        self.log_file = log_file  # File handle for logging firmware messages and events
         # This is our message queue (an anyio channel) to decouple the fast
         # message receiving from the slow message processing/printing.
         self.send_channel: anyio.abc.ObjectSendStream
         self.receive_channel: anyio.abc.ObjectReceiveStream
         self.send_channel, self.receive_channel = anyio.create_memory_object_stream(max_buffer_size=4000)
+        # Track ACKs received from firmware (nonce set)
+        self.received_acks = set()
+
+    def _log_to_file(self, line: str):
+        try:
+            if self.log_file:
+                self.log_file.write(line + "\n")
+                self.log_file.flush()
+        except Exception:
+            pass
+
+    def on_raw_data_bytes(self, data: bytes):
+        """
+        Optional raw-data callback: captures raw inbound serial bytes to file for diagnostics.
+        Note: This logs bytes as length and hex (truncated) to avoid huge files.
+        """
+        try:
+            ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            hex_preview = data[:64].hex()
+            self._log_to_file(f"[{ts}] RAW_RX len={len(data)} bytes preview={hex_preview}")
+        except Exception:
+            pass
         
     def on_message(self, msg):
         """
@@ -65,12 +88,30 @@ class MultipleChoiceMonitor:
             msg_type = msg.WhichOneof("payload")
         
             if msg_type == 'log':
-                message = msg.log.msg
-                # Check for component activation
-                if 'Component mode active' in message:
+                # Always capture firmware log messages to file
+                try:
+                    origin = getattr(msg.log, 'origin', '')
+                    text = getattr(msg.log, 'msg', '')
+                except Exception:
+                    origin, text = '', ''
+                timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                self._log_to_file(f"[{timestamp}] 📝 LOG [{origin}] {text}")
+                # Check for component activation (console behavior unchanged)
+                if 'Component mode active' in str(text):
                     if (not self.component_active):
                         self.component_active = True
                         print("✅ Component created successfully!")
+
+            elif msg_type == 'ack':
+                # Track ACKs so we can correlate with sent nonces
+                try:
+                    nonce = getattr(msg.ack, 'nonce', None)
+                except Exception:
+                    nonce = None
+                if nonce is not None:
+                    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                    self.received_acks.add(nonce)
+                    self._log_to_file(f"[{ts}] ✅ ACK received for nonce={nonce}")
 
             elif msg_type == 'smartknob_state':
                 if self.component_active:
@@ -84,11 +125,15 @@ class MultipleChoiceMonitor:
                         self.last_press_nonce = state.press_nonce
                         selected_value = self.get_selected_value(current_position)
                         print(f"[{timestamp}] 🔘 SELECTED: {selected_value} (index {current_position}, nonce={state.press_nonce})")
+                        # Also record to file
+                        self._log_to_file(f"[{timestamp}] BUTTON SELECTED: {selected_value} (index {current_position}, nonce={state.press_nonce})")
                     
                     # Show position changes only when position actually changes
                     elif self.last_position != current_position:
                         selected_value = self.get_selected_value(current_position)
                         print(f"[{timestamp}] {selected_value} ({current_position})")
+                        # Also record to file
+                        self._log_to_file(f"[{timestamp}] STATE {selected_value} ({current_position})")
                         self.last_position = current_position
 
     def get_selected_value(self, position):
@@ -104,47 +149,61 @@ class MultipleChoiceMonitor:
             return True
         return False
 
+    async def wait_for_ack(self, nonce: int, timeout: float = 1.5) -> bool:
+        """Wait until an ACK with the given nonce is observed or timeout."""
+        start = anyio.current_time()
+        while (anyio.current_time() - start) < timeout:
+            if nonce in self.received_acks:
+                return True
+            await anyio.sleep(0.05)
+        return False
+
     async def create_multiple_choice_component(self, component_id="multi_choice", title="Select Option", options=None):
         """Create a multiple choice component."""
         if options:
             self.options = options
-        
-        # Create AppComponent message
-        to_smartknob = smartknob_pb2.ToSmartknob()
-        to_smartknob.app_component.component_id = component_id
-        to_smartknob.app_component.type = 2  # MULTI_CHOICE = 2
-        to_smartknob.app_component.display_name = title
-        
-        # Configure multiple choice
-        multi_choice = to_smartknob.app_component.multi_choice
-        
-        # Set options
-        del multi_choice.options[:]
-        for option in self.options:
-            multi_choice.options.append(option)
-        
-        # Configure settings
-        multi_choice.initial_index = 0
-        multi_choice.wrap_around = True
-        multi_choice.detent_strength_unit = 1.5  # Strong feedback
-        multi_choice.endstop_strength_unit = 1.5  # Strong endstops
-        multi_choice.led_hue = 200  # Blue color
-        
-        # Send message
+
+        # Small stabilization delay to avoid initial empty COBS frames interfering
+        await anyio.sleep(0.3)
+
+        # Use protocol helper to compose and send MULTI_CHOICE AppComponent
         self.component_active = False
-        
-        await self.connection.protocol._enqueue_message(to_smartknob)
-        
+        try:
+            nonce = await self.connection.protocol.send_multi_choice(  # type: ignore[attr-defined]
+                component_id=component_id,
+                title=title,
+                options=self.options,
+                initial_index=0,
+                wrap_around=True,
+                detent_strength_unit=1.5,   # Strong feedback
+                endstop_strength_unit=1.5,  # Strong endstops
+                led_hue=200                 # Blue color
+            )
+            # Record enqueue info to file for correlation
+            ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            self._log_to_file(f"[{ts}] ENQUEUED AppComponent nonce={nonce} id='{component_id}' type=MULTI_CHOICE options={len(self.options)}")
+
+            # Wait for ACK of the exact nonce to confirm delivery to firmware
+            ack_ok = await self.wait_for_ack(nonce, timeout=1.5)
+            if not ack_ok:
+                print(f"⚠️ Warning: ACK timeout for AppComponent nonce={nonce}")
+                self._log_to_file(f"[{datetime.now().strftime('%H:%M:%S.%f')[:-3]}] ⚠️ ACK timeout for AppComponent nonce={nonce}")
+
+        except Exception as e:
+            self._log_to_file(f"[{datetime.now().strftime('%H:%M:%S.%f')[:-3]}] ERROR enqueue AppComponent: {e}")
+            print(f"❌ Failed to send MULTI_CHOICE: {e}")
+            return False
+
         # Wait for component creation by polling component_active flag
         timeout = 10.0  # Maximum wait time in seconds
         start_time = anyio.current_time()
-        
+
         while not self.component_active:
             if (anyio.current_time() - start_time) > timeout:
                 print("⚠️ Warning: Component creation timeout")
                 return False
             await anyio.sleep(0.1)  # Check every 100ms
-        
+
         # Component will be created successfully and logged in on_message
         return True
 
@@ -182,8 +241,17 @@ async def main():
     port = ports[0]
     print(f"📡 Connecting to SmartKnob on {port}...")
     
+    # Prepare log file path under project logs/use_multiple_choice
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    log_dir = os.path.join(project_root, 'logs', 'use_multiple_choice')
+    os.makedirs(log_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = os.path.join(log_dir, f"multiple_choice_{ts}.log")
+    log_file = open(log_path, 'w', encoding='utf-8')
+    print(f"📝 Logging to file: {log_path}")
+    
     # Reset for clean state
-    reset_connection(port)
+    # reset_connection(port)
     
     try:
         # Connect and start monitoring
@@ -192,10 +260,12 @@ async def main():
             
             # Create monitor with drink options
             drinks = ["Coffee", "Tea", "Water", "Juice", "Soda"]
-            monitor = MultipleChoiceMonitor(connection, options=drinks)
+            monitor = MultipleChoiceMonitor(connection, options=drinks, log_file=log_file)
             
             # Set up message handler
             connection.set_message_callback(monitor.on_message)
+            # Set up raw data capture (inbound only)
+            connection.set_raw_data_callback(monitor.on_raw_data_bytes)
             
             # Start protocol read loop
             async with anyio.create_task_group() as tg:
@@ -210,7 +280,7 @@ async def main():
                 # Create multiple choice component
                 await monitor.create_multiple_choice_component(
                     component_id="drink_selector",
-                    title="Drink Selector", 
+                    title="Drink Selector",
                     options=drinks
                 )
                 
@@ -219,6 +289,11 @@ async def main():
         
     except Exception as e:
         print(f"❌ Error: {e}")
+    finally:
+        try:
+            log_file.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     try:

@@ -4,7 +4,7 @@
 #include "util.h"
 
 // TODO: check if all ONBOARDING and HAS case switches can be remove
-
+ 
 QueueHandle_t trigger_motor_calibration_;
 uint8_t trigger_motor_calibration_event_;
 
@@ -96,39 +96,49 @@ void RootTask::run()
     // Component system protocol handler
     serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_app_component_tag, [this](PB_ToSmartknob to_smartknob)
                                                    {
-                                                       LOGI("RootTask: Received app_component message");
+                                                       const PB_AppComponent &ac = to_smartknob.payload.app_component;
+                                                       int which = (int)ac.which_component_config;
+                                                       int type  = (int)ac.type;
+                                                       int opt_count = (which == PB_AppComponent_multi_choice_tag)
+                                                                           ? (int)ac.component_config.multi_choice.options_count
+                                                                           : -1;
+
+                                                       LOGI("RootTask: Received app_component: id='%s' type=%d which=%d options_count=%d",
+                                                            ac.component_id, type, which, opt_count);
 
                                                        // Defensive guard: ensure ComponentManager is initialized
                                                        if (component_manager_ == nullptr)
                                                        {
-                                                           LOGE("RootTask: ComponentManager not initialized, ignoring app_component message");
+                                                           LOGE("RootTask: ComponentManager not initialized, ignoring app_component '%s'", ac.component_id);
                                                            return;
                                                        }
 
-                                                       // The 'to_smartknob' object is temporary and lives on the stack.
-                                                       // Its payload 'app_component' will be invalid after this lambda returns.
-                                                       // By passing it BY VALUE to createComponent, we create a temporary copy
-                                                       // for the duration of the call, which is long enough for the
-                                                       // component's constructor to make its own persistent deep copy.
-                                                       bool success = component_manager_->createComponent(to_smartknob.payload.app_component);
+                                                       LOGI("RootTask: Calling createComponent(id='%s', type=%d)", ac.component_id, type);
+                                                       bool success = component_manager_->createComponent(ac);
 
                                                        if (success)
                                                        {
+                                                           LOGI("RootTask: createComponent() succeeded for '%s'", ac.component_id);
+
                                                            // Switch to component mode and activate the new component
                                                            component_mode_ = true;
-                                                           if (component_manager_->setActiveComponent(to_smartknob.payload.app_component.component_id))
+                                                           bool activated = component_manager_->setActiveComponent(ac.component_id);
+                                                           if (activated)
                                                            {
+                                                               LOGI("RootTask: setActiveComponent('%s') succeeded; triggering motor update", ac.component_id);
                                                                // setActiveComponent now calls render() internally (like Apps::setActive)
                                                                component_manager_->triggerMotorConfigUpdate(); // Like DisplayTask::enableDemo
+                                                               LOGI("RootTask: Switched to component mode, activated '%s'", ac.component_id);
                                                            }
-                                                           LOGI("RootTask: Switched to component mode, activated '%s'", to_smartknob.payload.app_component.component_id);
+                                                           else
+                                                           {
+                                                               LOGE("RootTask: setActiveComponent('%s') FAILED after successful create", ac.component_id);
+                                                           }
                                                        }
                                                        else
                                                        {
-                                                           LOGE("RootTask: Failed to create component '%s'", to_smartknob.payload.app_component.component_id);
-                                                       }
-                                                       // Send acknowledgment (TODO: implement proper ack sending)
-                                                   });
+                                                           LOGE("RootTask: Failed to create component '%s' (type=%d)", ac.component_id, type);
+                                                       } });
 
     serial_protocol_protobuf_->registerCommandCallback(PB_SmartKnobCommand_MOTOR_CALIBRATE, [this]()
                                                        { motor_task_.runCalibration(); });

@@ -28,9 +28,8 @@ async def main():
     port = ports[0]
     options = ["collimate", "follow", "Auto EPX" ]
     # Reset the device
-    print("Resetting device... ")
-    
-    await anyio.to_thread.run_sync(lambda: reset_connection(port))
+    # print("Resetting device... ")    
+    # await anyio.to_thread.run_sync(lambda: reset_connection(port))
 
 
     async with await MultipleChoiceSession.connect(port, options=options, title="AzurionEye", auto_reset=True) as mc:

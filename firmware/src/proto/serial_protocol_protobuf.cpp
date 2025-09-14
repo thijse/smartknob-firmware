@@ -71,7 +71,7 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
     if (size <= 4)
     {
         // Too small, ignore bad packet
-        LOGD("Small packet received. Ignoring.");
+        LOGD("Small packet received. Ignoring. size=%u", (unsigned)size);
         return;
     }
 
@@ -120,6 +120,20 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
         // LOGI("New nonce received: %u", pb_rx_buffer_.nonce);
     }
     last_nonce_ = pb_rx_buffer_.nonce;
+
+    // Verbose diagnostics: log payload tag and key fields
+    LOGI("SerialProtocolProtobuf: RX nonce=%u payload_tag=%d size=%u",
+         pb_rx_buffer_.nonce, (int)pb_rx_buffer_.which_payload, (unsigned)size);
+
+    if (pb_rx_buffer_.which_payload == PB_ToSmartknob_app_component_tag)
+    {
+        const PB_AppComponent &ac = pb_rx_buffer_.payload.app_component;
+        int details = (ac.which_component_config == PB_AppComponent_multi_choice_tag)
+                          ? (int)ac.component_config.multi_choice.options_count
+                          : -1;
+        LOGI("SerialProtocolProtobuf: AppComponent id='%s' type=%d which=%d options_count=%d",
+             ac.component_id, (int)ac.type, (int)ac.which_component_config, details);
+    }
 
     // todo: what is the difference between a tag callback and a button command?
     // LOGI("Searching for tag callback");
@@ -211,6 +225,9 @@ void SerialProtocolProtobuf::sendPBTxBuffer()
 
 void SerialProtocolProtobuf::ack(uint32_t nonce)
 {
+    // Verbose ACK diagnostics to correlate with host-side ACK wait
+    LOGI("SerialProtocolProtobuf: ACK sent nonce=%u", (unsigned)nonce);
+
     pb_tx_buffer_ = {};
     pb_tx_buffer_.which_payload = PB_FromSmartKnob_ack_tag;
     pb_tx_buffer_.payload.ack.nonce = nonce;

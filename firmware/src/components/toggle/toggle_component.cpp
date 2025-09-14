@@ -28,7 +28,17 @@ ToggleComponent::ToggleComponent(
     current_position = config_.initial_state ? 1 : 0;
     last_position = current_position;
 
-    // Configure motor with user settings
+    // Configure motor with user settings (clamp strengths to [0.0, 1.0] for stability)
+    float detent = config_.detent_strength_unit;
+    if (detent < 0.0f)
+        detent = 0.0f;
+    if (detent > 1.0f)
+        detent = 1.0f;
+    if (detent != config_.detent_strength_unit)
+    {
+        LOGW("ToggleComponent: clamped detent_strength_unit from %.2f to %.2f", (double)config_.detent_strength_unit, (double)detent);
+    }
+
     motor_config = PB_SmartKnobConfig{
         current_position,                                                // position
         0,                                                               // sub_position_unit
@@ -36,13 +46,13 @@ ToggleComponent::ToggleComponent(
         0,                                                               // min_position
         1,                                                               // max_position
         60 * PI / 180,                                                   // position_width_radians
-        config_.detent_strength_unit,                                    // detent_strength_unit
+        detent,                                                          // detent_strength_unit (clamped)
         1,                                                               // endstop_strength_unit
         config_.snap_point,                                              // snap_point
         "",                                                              // id
-        0,                                                               // detent_positions_count (FIXED: was id_nonce)
+        0,                                                               // detent_positions_count
         {},                                                              // detent_positions
-        0,                                                               // snap_point_bias (FIXED: was detent_positions_count)
+        0,                                                               // snap_point_bias
         current_position == 0 ? config_.off_led_hue : config_.on_led_hue // led_hue
     };
     strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
@@ -144,6 +154,8 @@ EntityStateUpdate ToggleComponent::updateStateFromKnob(PB_SmartKnobState state)
     }
     else
     {
+        // Guard LVGL updates with the shared LVGL mutex
+        SemaphoreGuard lock(mutex_);
         if (current_position == 0)
         {
             lv_arc_set_value(arc_, 0);
@@ -251,4 +263,99 @@ const char *ToggleComponent::getState()
              current_position > 0 ? "true" : "false",
              current_position > 0 ? config_.on_label : config_.off_label);
     return state_buffer_;
+}
+
+// === Reconfiguration support for ToggleComponent ===
+#include <logging.h>
+
+bool ToggleComponent::configure(const PB_AppComponent &config)
+{
+    // Validate type and union tag
+    if (config.type != PB_ComponentType_TOGGLE)
+    {
+        LOGE("ToggleComponent::configure: type mismatch (%d)", config.type);
+        return false;
+    }
+    if (config.which_component_config != PB_AppComponent_toggle_tag)
+    {
+        LOGE("ToggleComponent::configure: missing toggle config (which=%d)", config.which_component_config);
+        return false;
+    }
+
+    // Preserve current position across reconfig
+    uint8_t preserved_position = current_position > 0 ? 1 : 0;
+
+    // Apply new configuration
+    component_config_ = config;
+    configured_ = true;
+
+    const auto &cfg = getConfig();
+
+    // Clamp/normalize preserved position
+    current_position = preserved_position;
+    last_position = current_position;
+
+    // Recompute motor config (mirror constructor logic, but keep position)
+    // Clamp strengths to [0.0, 1.0] for stability
+    float detent = cfg.detent_strength_unit;
+    if (detent < 0.0f)
+        detent = 0.0f;
+    if (detent > 1.0f)
+        detent = 1.0f;
+    if (detent != cfg.detent_strength_unit)
+    {
+        LOGW("ToggleComponent::configure: clamped detent_strength_unit from %.2f to %.2f", (double)cfg.detent_strength_unit, (double)detent);
+    }
+
+    motor_config = PB_SmartKnobConfig{
+        current_position,                                        // position
+        0,                                                       // sub_position_unit
+        current_position,                                        // position_nonce
+        0,                                                       // min_position
+        1,                                                       // max_position
+        60 * PI / 180,                                           // position_width_radians
+        detent,                                                  // detent_strength_unit (clamped)
+        1,                                                       // endstop_strength_unit
+        cfg.snap_point,                                          // snap_point
+        "",                                                      // id
+        0,                                                       // detent_positions_count
+        {},                                                      // detent_positions
+        cfg.snap_point_bias,                                     // snap_point_bias
+        current_position == 0 ? cfg.off_led_hue : cfg.on_led_hue // led_hue
+    };
+    strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
+
+    // Update UI to reflect new labels/colors
+    {
+        SemaphoreGuard lock(mutex_);
+        if (status_label != nullptr)
+        {
+            lv_label_set_text(status_label, current_position == 0 ? cfg.off_label : cfg.on_label);
+        }
+        if (screen != nullptr)
+        {
+            if (current_position == 0)
+            {
+                lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x00, 0x00), 0);
+                if (arc_ != nullptr)
+                {
+                    lv_obj_set_style_arc_color(arc_, dark_arc_bg, LV_PART_MAIN);
+                }
+            }
+            else
+            {
+                lv_obj_set_style_bg_color(screen, LV_COLOR_MAKE(0x00, 0x80, 0x00), 0);
+                if (arc_ != nullptr)
+                {
+                    lv_obj_set_style_arc_color(arc_, lv_color_mix(dark_arc_bg, LV_COLOR_MAKE(0x00, 0x80, 0x00), 128), LV_PART_MAIN);
+                }
+            }
+        }
+    }
+
+    LOGI("ToggleComponent '%s': reconfigured (snap_point=%.2f, detent=%.2f, hues off/on=%d/%d)",
+         component_id_, cfg.snap_point, cfg.detent_strength_unit, (int)cfg.off_led_hue, (int)cfg.on_led_hue);
+
+    // Note: ComponentManager will call triggerMotorConfigUpdate() and render() if this component is active.
+    return true;
 }

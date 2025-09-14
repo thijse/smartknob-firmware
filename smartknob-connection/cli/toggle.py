@@ -28,8 +28,8 @@ async def main():
     print(f"📡 Found SmartKnob on: {port}")
 
     # Reset device to ensure clean protobuf mode and component state
-    print("Resetting device... ")
-    await anyio.to_thread.run_sync(lambda: reset_connection(port))
+    # print("Resetting device... ")
+    # await anyio.to_thread.run_sync(lambda: reset_connection(port))
 
     async with await ToggleComponent.connect(
         port,

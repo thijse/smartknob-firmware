@@ -436,12 +436,16 @@ class SmartKnobProtocol:
     
     # Public API methods
     
-    async def send_command(self, command: int):
-        """Send SmartKnob command."""
+    async def send_command(self, command: int) -> int:
+        """Send SmartKnob command.
+
+        Returns the nonce assigned to the message for optional ACK correlation.
+        """
         message = smartknob_pb2.ToSmartknob()
         message.smartknob_command = command
         await self._enqueue_message(message)
         logger.info(f"Sent command: {command}")
+        return message.nonce
     
     async def send_config(self, config: smartknob_pb2.SmartKnobConfig):
         """Send SmartKnob configuration."""

@@ -46,21 +46,37 @@ MultipleChoice::MultipleChoice(
     last_position = current_position;
 
     // Configure motor with user settings - enhanced for better feel
+    // Clamp detent/endstop strengths to [0.0, 1.0] to avoid instability
+    float detent = config_.detent_strength_unit;
+    if (detent < 0.0f)
+        detent = 0.0f;
+    if (detent > 1.0f)
+        detent = 1.0f;
+    float endstop = config_.endstop_strength_unit;
+    if (endstop < 0.0f)
+        endstop = 0.0f;
+    if (endstop > 1.0f)
+        endstop = 1.0f;
+    if (detent != config_.detent_strength_unit || endstop != config_.endstop_strength_unit)
+    {
+        LOGW("MultipleChoice: clamped strengths detent=%.2f endstop=%.2f", (double)detent, (double)endstop);
+    }
+
     motor_config = PB_SmartKnobConfig{
-        current_position,                    // position
-        0,                                   // sub_position_unit
-        (uint8_t)current_position,           // position_nonce
-        0,                                   // min_position
-        config_.options_count - 1,           // max_position (use config from base class)
-        12.0 * PI / 180,                     // position_width_radians (1.5x wider: 8->12 degrees per position)
-        config_.detent_strength_unit * 2.0f, // detent_strength_unit (2x stronger haptic feedback)
-        config_.endstop_strength_unit,       // endstop_strength_unit
-        0.5,                                 // snap_point
-        "",                                  // id
-        0,                                   // detent_positions_count (FIXED: was id_nonce)
-        {},                                  // detent_positions (FIXED: was detent_positions)
-        0,                                   // snap_point_bias (FIXED: was detent_positions_count)
-        config_.led_hue                      // led_hue
+        current_position,          // position
+        0,                         // sub_position_unit
+        (uint8_t)current_position, // position_nonce
+        0,                         // min_position
+        config_.options_count - 1, // max_position
+        12.0 * PI / 180,           // position_width_radians
+        detent,                    // detent_strength_unit (clamped)
+        endstop,                   // endstop_strength_unit (clamped)
+        0.5,                       // snap_point
+        "",                        // id
+        0,                         // detent_positions_count
+        {},                        // detent_positions
+        0,                         // snap_point_bias
+        config_.led_hue            // led_hue
     };
     strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
 
@@ -189,7 +205,7 @@ EntityStateUpdate MultipleChoice::updateStateFromKnob(PB_SmartKnobState state)
         updateDisplay();
 
         // Update motor config for LED color
-        //triggerMotorConfigUpdate();
+        // triggerMotorConfigUpdate();
     }
 
     return new_state;
@@ -306,4 +322,92 @@ void MultipleChoice::updateDisplay()
 
     LOGI("MultipleChoice: Updated display - option %d/%d: '%s'",
          current_position + 1, config_.options_count, get_selected_text());
+}
+
+// === Reconfiguration support for MultipleChoice ===
+#include <logging.h>
+
+bool MultipleChoice::configure(const PB_AppComponent &config)
+{
+    // Validate type and union tag
+    if (config.type != PB_ComponentType_MULTI_CHOICE)
+    {
+        LOGE("MultipleChoice::configure: type mismatch (%d)", config.type);
+        return false;
+    }
+    if (config.which_component_config != PB_AppComponent_multi_choice_tag)
+    {
+        LOGE("MultipleChoice::configure: missing multi_choice config (which=%d)", config.which_component_config);
+        return false;
+    }
+
+    // Preserve current selection index across reconfig
+    int preserved_position = current_position;
+
+    // Apply new configuration
+    component_config_ = config;
+
+    const auto &cfg = getConfig();
+
+    // Validate options and set configured_ flag
+    if (cfg.options_count <= 0 || cfg.options_count > 16)
+    {
+        LOGE("MultipleChoice::configure: invalid options_count=%d", cfg.options_count);
+        configured_ = false;
+        return false;
+    }
+    configured_ = true;
+
+    // Clamp preserved position to new bounds
+    if (preserved_position < 0)
+        preserved_position = 0;
+    if (preserved_position >= cfg.options_count)
+        preserved_position = cfg.options_count - 1;
+
+    current_position = preserved_position;
+    last_position = current_position;
+
+    // Recompute motor config (mirror constructor logic, but keep position)
+    // Clamp detent/endstop strengths to [0.0, 1.0] to avoid instability
+    float detent = cfg.detent_strength_unit;
+    if (detent < 0.0f)
+        detent = 0.0f;
+    if (detent > 1.0f)
+        detent = 1.0f;
+    float endstop = cfg.endstop_strength_unit;
+    if (endstop < 0.0f)
+        endstop = 0.0f;
+    if (endstop > 1.0f)
+        endstop = 1.0f;
+    if (detent != cfg.detent_strength_unit || endstop != cfg.endstop_strength_unit)
+    {
+        LOGW("MultipleChoice::configure: clamped strengths detent=%.2f endstop=%.2f", (double)detent, (double)endstop);
+    }
+
+    motor_config = PB_SmartKnobConfig{
+        (int32_t)current_position, // position
+        0,                         // sub_position_unit
+        (uint8_t)current_position, // position_nonce
+        0,                         // min_position
+        cfg.options_count - 1,     // max_position
+        12.0 * PI / 180,           // position_width_radians
+        detent,                    // detent_strength_unit (clamped)
+        endstop,                   // endstop_strength_unit (clamped)
+        0.5f,                      // snap_point
+        "",                        // id
+        0,                         // detent_positions_count
+        {},                        // detent_positions
+        0,                         // snap_point_bias
+        cfg.led_hue                // led_hue
+    };
+    strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
+
+    // Update display text and index indicator to reflect new configuration
+    updateDisplay();
+
+    LOGI("MultipleChoice '%s': reconfigured (%d options, detent=%.2f, endstop=%.2f, hue=%d, pos=%d)",
+         component_id_, cfg.options_count, (double)cfg.detent_strength_unit, (double)cfg.endstop_strength_unit, (int)cfg.led_hue, current_position);
+
+    // Note: ComponentManager will call triggerMotorConfigUpdate() and render() if this component is active.
+    return true;
 }
