@@ -13,7 +13,7 @@ import anyio
 import anyio.abc
 from datetime import datetime
 
-# Add smartknob-connection2 directory to path for imports
+# Add smartknob-connection directory to path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 smartknob_path = os.path.dirname(current_dir)
 sys.path.insert(0, smartknob_path)

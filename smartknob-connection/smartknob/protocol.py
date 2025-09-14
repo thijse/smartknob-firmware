@@ -521,6 +521,41 @@ class SmartKnobProtocol:
         mc.led_hue = int(led_hue)
 
         return await self.send_app_component(app_component)
+
+    async def send_toggle(
+        self,
+        component_id: str,
+        title: str,
+        off_label: str = "Off",
+        on_label: str = "On",
+        initial_state: bool = False,
+        snap_point: float = 0.7,
+        snap_point_bias: float = 0.4,
+        detent_strength_unit: float = 4.0,
+        off_led_hue: int = 0,
+        on_led_hue: int = 120,
+    ) -> int:
+        """
+        Compose and send a TOGGLE app component payload.
+        Returns the nonce assigned to the message for optional ACK correlation.
+        """
+        app_component = smartknob_pb2.AppComponent()
+        app_component.component_id = component_id
+        # TOGGLE = 0
+        app_component.type = 0
+        app_component.display_name = title
+
+        t = app_component.toggle
+        t.off_label = str(off_label)
+        t.on_label = str(on_label)
+        t.initial_state = bool(initial_state)
+        t.snap_point = float(snap_point)
+        t.snap_point_bias = float(snap_point_bias)
+        t.detent_strength_unit = float(detent_strength_unit)
+        t.off_led_hue = int(off_led_hue)
+        t.on_led_hue = int(on_led_hue)
+
+        return await self.send_app_component(app_component)
 class SmartKnobConnection:
     """
     SmartKnob connection manager using AnyIO.

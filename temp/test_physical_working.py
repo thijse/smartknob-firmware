@@ -95,11 +95,11 @@ class PhysicalComponentTester:
         to_smartknob = smartknob_pb2.ToSmartknob()
         to_smartknob.app_component.component_id = "physical_test_toggle"
         to_smartknob.app_component.type = 0  # TOGGLE = 0
-        to_smartknob.app_component.display_name = "AzurionEye"
+        to_smartknob.app_component.display_name = "Knoppie"
         
         # Configure toggle with strong physical feedback
-        to_smartknob.app_component.toggle.off_label = "Start"
-        to_smartknob.app_component.toggle.on_label = "Halt"
+        to_smartknob.app_component.toggle.off_label = "Aan"
+        to_smartknob.app_component.toggle.on_label = "uit"
         to_smartknob.app_component.toggle.snap_point = 0.7  # Clear 50% snap point
         to_smartknob.app_component.toggle.snap_point_bias = 0.4  # No bias
         to_smartknob.app_component.toggle.initial_state = False  # Start OFF
