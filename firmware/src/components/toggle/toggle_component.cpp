@@ -52,10 +52,19 @@ ToggleComponent::ToggleComponent(
         "",                                                              // id
         0,                                                               // detent_positions_count
         {},                                                              // detent_positions
-        0,                                                               // snap_point_bias
+        config_.snap_point_bias,                                         // snap_point_bias (honor config)
         current_position == 0 ? config_.off_led_hue : config_.on_led_hue // led_hue
     };
-    strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
+    {
+        size_t src_len = strnlen(component_id_, sizeof(component_id_));
+        size_t copy_len = (src_len < sizeof(motor_config.id) - 1) ? src_len : (sizeof(motor_config.id) - 1);
+        memcpy(motor_config.id, component_id_, copy_len);
+        motor_config.id[copy_len] = '\0';
+    }
+
+    // Diagnostic: log applied haptics at creation
+    LOGI("ToggleComponent '%s': created (snap_point=%.2f, bias=%.2f, detent=%.2f, hues off/on=%d/%d)",
+         component_id_, (double)config_.snap_point, (double)config_.snap_point_bias, (double)detent, (int)config_.off_led_hue, (int)config_.on_led_hue);
 
     // Initialize state buffer
     memset(state_buffer_, 0, sizeof(state_buffer_));
@@ -323,7 +332,12 @@ bool ToggleComponent::configure(const PB_AppComponent &config)
         cfg.snap_point_bias,                                     // snap_point_bias
         current_position == 0 ? cfg.off_led_hue : cfg.on_led_hue // led_hue
     };
-    strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
+    {
+        size_t src_len = strnlen(component_id_, sizeof(component_id_));
+        size_t copy_len = (src_len < sizeof(motor_config.id) - 1) ? src_len : (sizeof(motor_config.id) - 1);
+        memcpy(motor_config.id, component_id_, copy_len);
+        motor_config.id[copy_len] = '\0';
+    }
 
     // Update UI to reflect new labels/colors
     {
@@ -353,8 +367,8 @@ bool ToggleComponent::configure(const PB_AppComponent &config)
         }
     }
 
-    LOGI("ToggleComponent '%s': reconfigured (snap_point=%.2f, detent=%.2f, hues off/on=%d/%d)",
-         component_id_, cfg.snap_point, cfg.detent_strength_unit, (int)cfg.off_led_hue, (int)cfg.on_led_hue);
+    LOGI("ToggleComponent '%s': reconfigured (snap_point=%.2f, bias=%.2f, detent=%.2f, hues off/on=%d/%d)",
+         component_id_, (double)cfg.snap_point, (double)cfg.snap_point_bias, (double)cfg.detent_strength_unit, (int)cfg.off_led_hue, (int)cfg.on_led_hue);
 
     // Note: ComponentManager will call triggerMotorConfigUpdate() and render() if this component is active.
     return true;

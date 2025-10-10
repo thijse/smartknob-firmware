@@ -4,7 +4,7 @@
 #include "util.h"
 
 // TODO: check if all ONBOARDING and HAS case switches can be remove
- 
+
 QueueHandle_t trigger_motor_calibration_;
 uint8_t trigger_motor_calibration_event_;
 
@@ -84,17 +84,20 @@ void RootTask::run()
 
     motor_task_.addListener(knob_state_queue_);
 
-    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_settings_tag, [this](PB_ToSmartknob to_smartknob)
-                                                   { configuration_->setSettings(to_smartknob.payload.settings); });
-
-    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_strain_calibration_tag, [this](PB_ToSmartknob to_smartknob)
+    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_settings_tag, [this](const PB_ToSmartknob &to_smartknob)
+                                                   {
+                                                       // Make a mutable local copy to match Configuration::setSettings(SETTINGS_Settings &)
+                                                       SETTINGS_Settings settings;
+                                                       memcpy(&settings, &to_smartknob.payload.settings, sizeof(SETTINGS_Settings));
+                                                       configuration_->setSettings(settings); });
+    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_strain_calibration_tag, [this](const PB_ToSmartknob &to_smartknob)
                                                    { sensors_task_->factoryStrainCalibrationCallback(to_smartknob.payload.strain_calibration.calibration_weight); });
 
-    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_request_state_tag, [this](PB_ToSmartknob to_smartknob)
+    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_request_state_tag, [this](const PB_ToSmartknob &to_smartknob)
                                                    { sendCurrentKnobState(); });
 
     // Component system protocol handler
-    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_app_component_tag, [this](PB_ToSmartknob to_smartknob)
+    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_app_component_tag, [this](const PB_ToSmartknob &to_smartknob)
                                                    {
                                                        const PB_AppComponent &ac = to_smartknob.payload.app_component;
                                                        int which = (int)ac.which_component_config;
@@ -103,41 +106,48 @@ void RootTask::run()
                                                                            ? (int)ac.component_config.multi_choice.options_count
                                                                            : -1;
 
+                                                       // SAFETY: nanopb char arrays may not be null-terminated. Create a bounded, explicitly terminated copy.
+                                                       size_t id_len = strnlen(ac.component_id, sizeof(ac.component_id));
+                                                       char id_buf[sizeof(ac.component_id) + 1];
+                                                       memcpy(id_buf, ac.component_id, id_len);
+                                                       id_buf[id_len] = '\0';
+                                                       std::string id_str(id_buf);
+
                                                        LOGI("RootTask: Received app_component: id='%s' type=%d which=%d options_count=%d",
-                                                            ac.component_id, type, which, opt_count);
+                                                            id_buf, type, which, opt_count);
 
                                                        // Defensive guard: ensure ComponentManager is initialized
                                                        if (component_manager_ == nullptr)
                                                        {
-                                                           LOGE("RootTask: ComponentManager not initialized, ignoring app_component '%s'", ac.component_id);
+                                                           LOGE("RootTask: ComponentManager not initialized, ignoring app_component '%s'", id_buf);
                                                            return;
                                                        }
 
-                                                       LOGI("RootTask: Calling createComponent(id='%s', type=%d)", ac.component_id, type);
+                                                       LOGI("RootTask: Calling createComponent(id='%s', type=%d)", id_buf, type);
                                                        bool success = component_manager_->createComponent(ac);
 
                                                        if (success)
                                                        {
-                                                           LOGI("RootTask: createComponent() succeeded for '%s'", ac.component_id);
+                                                           LOGI("RootTask: createComponent() succeeded for '%s'", id_buf);
 
                                                            // Switch to component mode and activate the new component
                                                            component_mode_ = true;
-                                                           bool activated = component_manager_->setActiveComponent(ac.component_id);
+                                                           bool activated = component_manager_->setActiveComponent(id_str);
                                                            if (activated)
                                                            {
-                                                               LOGI("RootTask: setActiveComponent('%s') succeeded; triggering motor update", ac.component_id);
+                                                               LOGI("RootTask: setActiveComponent('%s') succeeded; triggering motor update", id_buf);
                                                                // setActiveComponent now calls render() internally (like Apps::setActive)
                                                                component_manager_->triggerMotorConfigUpdate(); // Like DisplayTask::enableDemo
-                                                               LOGI("RootTask: Switched to component mode, activated '%s'", ac.component_id);
+                                                               LOGI("RootTask: Switched to component mode, activated '%s'", id_buf);
                                                            }
                                                            else
                                                            {
-                                                               LOGE("RootTask: setActiveComponent('%s') FAILED after successful create", ac.component_id);
+                                                               LOGE("RootTask: setActiveComponent('%s') FAILED after successful create", id_buf);
                                                            }
                                                        }
                                                        else
                                                        {
-                                                           LOGE("RootTask: Failed to create component '%s' (type=%d)", ac.component_id, type);
+                                                           LOGE("RootTask: Failed to create component '%s' (type=%d)", id_buf, type);
                                                        } });
 
     serial_protocol_protobuf_->registerCommandCallback(PB_SmartKnobCommand_MOTOR_CALIBRATE, [this]()
@@ -328,23 +338,23 @@ void RootTask::run()
             app_state.motor_state = latest_state_;
             app_state.os_mode_state = configuration_->getOSConfiguration()->mode;
 
-            // COMPONENT SYSTEM INTEGRATION: Check if we have an active component
-            if (component_manager_ && component_manager_->getActiveComponent())
+            // COMPONENT SYSTEM INTEGRATION: Always forward to ComponentManager when in component mode
+            // Avoid TOCTOU on getActiveComponent by not pre-fetching pointers here.
+            if (component_manager_ && component_mode_)
             {
-                // Route input to ComponentManager using Apps-like interface
+                // Route input to ComponentManager using Apps-like interface (thread-safe inside)
                 entity_state_update_to_send = component_manager_->update(app_state);
 
                 // Components now handle their own haptics via App inheritance
-                // Log component activity for debugging
                 static uint32_t component_log_counter = 0;
                 if (++component_log_counter % 100 == 0)
-                { // Log every second (10ms * 100)
+                {
                     LOGI("Component mode active: pos=%.3f", latest_state_.sub_position_unit);
                 }
             }
             else
             {
-                // Traditional app system (fallback when no component is active)
+                // Traditional app system (fallback when not in component mode)
                 entity_state_update_to_send = display_task_->getApps()->update(app_state);
             }
 

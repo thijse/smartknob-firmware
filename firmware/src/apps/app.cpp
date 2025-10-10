@@ -48,7 +48,14 @@ App::App(SemaphoreHandle_t mutex, int8_t next, int8_t back) : mutex_(mutex), nex
 void App::render()
 {
     SemaphoreGuard lock(mutex_);
+    if (screen == nullptr)
+    {
+        LOGE("App::render: screen is NULL, cannot load");
+        return;
+    }
+    LOGI("App::render: lv_scr_load begin screen=%p", screen);
     lv_scr_load(screen);
+    LOGI("App::render: lv_scr_load end");
 }
 
 void App::setMotorNotifier(MotorNotifier *motor_notifier)

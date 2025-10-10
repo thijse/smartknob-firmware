@@ -9,6 +9,26 @@ This module provides the core protocol handling for SmartKnob communication:
 - Protobuf message parsing (100% working)
 - Command sending (working, but firmware doesn't respond)
 - Message reception (working perfectly for log messages)
+
+ESP32 RESET BEHAVIOR (Experimentally Determined):
+================================================
+Through interactive testing, we discovered these ESP32 reset patterns:
+
+1. OPENING RULES:
+   - Reset occurs ONLY on FIRST connection after ESP32 idle period
+   - Requires DTR/RTS=True (default serial behavior)  
+   - Subsequent opens do NOT reset (ESP32 has "reset immunity")
+
+2. CLOSING RULES:
+   - Reset occurs ONLY if DTR/RTS were True DURING open() call
+   - Changing DTR/RTS after open() has NO effect on close behavior
+   - Reset behavior is "captured" at open() time
+
+3. PRACTICAL IMPLICATIONS:
+   - reset_at_close parameter must be set BEFORE start()
+   - ResetAtClose() method only affects FUTURE connections
+   - Standalone reset works reliably (ESP32 is idle)
+   - Reset while connected may not work (insufficient idle time)
 """
 
 import serial
@@ -31,10 +51,23 @@ RETRY_TIMEOUT_MS = 250  # 250ms retry timeout
 
 def reset_connection(port: str, baud: int = 921600) -> bool:
     """
-    Reset microcontroller connection by toggling DTR and RTS lines.
+    Reset microcontroller by opening/closing serial with reset enabled.
+    Simple and reliable - just let the default DTR/RTS behavior work.
     
-    This function performs a hardware reset of the connected microcontroller
-    (typically ESP32) by using the DTR and RTS control lines of the serial port.
+    OBSERVED ESP32 RESET BEHAVIOR RULES:
+    ====================================
+    1. OPENING: Reset occurs ONLY on the FIRST connection after ESP32 has been 
+       idle/disconnected, AND ONLY if DTR/RTS are True (default). Subsequent 
+       opens will NOT reset regardless of DTR/RTS settings.
+       
+    2. CLOSING: Reset occurs ONLY if DTR/RTS were set to True DURING the open() 
+       call. Changing DTR/RTS after connection is open has NO effect on close.
+       
+    3. RESET IMMUNITY: ESP32 becomes "immune" to resets after first connection 
+       until it's been idle for sufficient time.
+       
+    4. STATE CAPTURE: DTR/RTS reset behavior is "captured" during open() - 
+       subsequent changes don't affect close behavior.
     
     Args:
         port: Serial port (e.g., 'COM9', '/dev/ttyUSB0')
@@ -45,22 +78,15 @@ def reset_connection(port: str, baud: int = 921600) -> bool:
     """
     logger.info(f"Resetting microcontroller on {port}...")
     try:
-        # Open serial connection with DTR/RTS control
+        # Open with default DTR/RTS behavior (allows reset)
         ser = serial.Serial(port, baud, timeout=1)
+        # Reset happens automatically on open due to DTR/RTS
+        time.sleep(0.1)  # Brief hold
+        ser.close()  # Reset happens on close too
         
-        # ESP32 reset sequence: DTR low, RTS high, then release
-        ser.dtr = False  # DTR low
-        ser.rts = True   # RTS high (active)
-        time.sleep(0.1)  # Hold for 100ms
-        
-        ser.rts = False  # RTS low (inactive) - releases reset
-        time.sleep(0.1)  # Brief delay
-        
-        ser.close()
-        
-        # Wait for microcontroller to boot
+        # Wait for boot
         logger.info("Waiting for microcontroller to boot...")
-        time.sleep(2.0)  # Boot time
+        time.sleep(2.0)
         logger.info("Reset complete")
         return True
         
@@ -105,20 +131,24 @@ class SmartKnobProtocol:
     - Responsive to Ctrl-C
     """
     
-    def __init__(self, port: str, baud: int = 921600, on_message: Optional[Callable] = None, auto_reset: bool = False, on_raw_data: Optional[Callable] = None):
+    def __init__(self, port: str, baud: int = 921600, on_message: Optional[Callable] = None, reset_at_close: bool = False, on_raw_data: Optional[Callable] = None):
         """
         Initialize async protocol handler.
+        
+        IMPORTANT: reset_at_close must be set BEFORE calling start() because
+        ESP32 reset behavior is determined during open(), not close().
         
         Args:
             port: Serial port name
             baud: Baud rate (default: 921600)
             on_message: Callback for received messages
-            auto_reset: If True, reset ESP32 before connecting (default: False)
+            reset_at_close: If True, reset ESP32 when connection closes (default: False)
+                          NOTE: This sets DTR/RTS during open() - changes after open() are ignored
             on_raw_data: Callback for raw serial data (bytes) - for debugging/logging
         """
         self.port = port
         self.baud = baud
-        self.auto_reset = auto_reset
+        self.reset_at_close = reset_at_close
         self.on_message = on_message or (lambda msg: None)
         self.on_raw_data = on_raw_data or (lambda data: None)  # Add raw data callback
         
@@ -139,48 +169,45 @@ class SmartKnobProtocol:
         # Statistics
         self.stats = ProtocolStats()
         
-        logger.info("SmartKnobProtocol initialized")
+        logger.info(f"SmartKnobProtocol initialized with reset_at_close={self.reset_at_close}")
     
     async def start(self, switch_to_protobuf: bool = True):
         """
         Start the async protocol.
         
+        CRITICAL: The reset_at_close behavior is determined HERE during open().
+        ESP32 reset behavior cannot be changed after connection is established.
+        
         Args:
             switch_to_protobuf: Send 'q' command to switch to protobuf mode
         """
         try:
-            # Create serial object without opening the port yet
+            # Create and configure serial
             self.serial = serial.Serial()
             self.serial.port = self.port
             self.serial.baudrate = self.baud
-            self.serial.timeout = 5.0  # 5-second read timeout
+            self.serial.timeout = 5.0
             
-            # Set DTR/RTS to False BEFORE opening to prevent initial reset
-            self.serial.dtr = False  # Don't assert DTR (Data Terminal Ready)
-            self.serial.rts = False  # Don't assert RTS (Request To Send)
-            
-            # Now open the port with DTR/RTS already configured
-            self.serial.open()
-            
-            logger.info(f"Opened {self.port} at {self.baud} baud (no auto-reset)")
-            
-            # Reset ESP32 if requested
-            if self.auto_reset:
-                logger.info("Performing ESP32 reset...")
-                # Use existing serial connection for reset
+            # Simple reset control based on our findings
+            if not self.reset_at_close:
+                # Prevent reset: Set DTR/RTS to False
                 self.serial.dtr = False
-                self.serial.rts = True
-                await anyio.sleep(0.1)
                 self.serial.rts = False
-                await anyio.sleep(1.0)  # Give ESP32 time to boot
-                logger.info("ESP32 reset complete")
+                logger.info("Opening with reset prevention (DTR/RTS=False)")
+            else:
+                # Allow reset: Use default behavior (DTR/RTS=True)
+                logger.info("Opening with reset enabled (default DTR/RTS)")
             
-            # Switch to protobuf mode if requested
+            # Open port
+            self.serial.open()
+            logger.info(f"Opened {self.port} at {self.baud} baud")
+            
+            # Switch to protobuf if requested
             if switch_to_protobuf:
                 self.serial.write(b"q")
                 self.serial.flush()
                 await anyio.sleep(0.2)
-                logger.info("Sent 'q' command to switch to protobuf mode")
+                logger.info("Switched to protobuf mode")
             
             self.running = True
             logger.info("SmartKnobProtocol started")
@@ -191,23 +218,26 @@ class SmartKnobProtocol:
             raise
     
     async def stop(self):
-        """Stop the async protocol and cleanup resources without triggering ESP32 reset."""
+        """Stop protocol with optional reset on close."""
         logger.info("Stopping SmartKnobProtocol")
         self.running = False
         self.port_available = False
         
         if self.serial and self.serial.is_open:
-            # Ensure DTR/RTS don't change state to prevent ESP32 reset
-            self.serial.dtr = False
-            self.serial.rts = False
+            if not self.reset_at_close:
+                # Ensure no reset on close
+                self.serial.dtr = False
+                self.serial.rts = False
+                logger.info("Closing without reset (DTR/RTS=False)")
+            else:
+                logger.info("Closing with reset enabled")
             
             # Brief delay to let ESP32 finish processing any pending data
             await anyio.sleep(0.1)
             
-            # Close the port gracefully
             self.serial.close()
             self.serial = None
-            logger.info("Serial port closed without triggering ESP32 reset")
+            logger.info("Serial port closed")
         
         logger.info("SmartKnobProtocol stopped")
     
@@ -533,8 +563,8 @@ class SmartKnobProtocol:
         off_label: str = "Off",
         on_label: str = "On",
         initial_state: bool = False,
-        snap_point: float = 0.7,
-        snap_point_bias: float = 0.4,
+        snap_point: float = 0.5,
+        snap_point_bias: float = 0.0,
         detent_strength_unit: float = 4.0,
         off_led_hue: int = 0,
         on_led_hue: int = 120,
@@ -567,19 +597,19 @@ class SmartKnobConnection:
     Provides a clean async interface for connecting to and communicating with SmartKnob devices.
     """
     
-    def __init__(self, port: str, baud: int = 921600, auto_reset: bool = False, on_raw_data: Optional[Callable] = None):
+    def __init__(self, port: str, baud: int = 921600, reset_at_close: bool = False, on_raw_data: Optional[Callable] = None):
         """
         Initialize connection.
         
         Args:
             port: Serial port (e.g., 'COM9', '/dev/ttyUSB0')
             baud: Baud rate (default: 921600)
-            auto_reset: If True, reset ESP32 before connecting (default: False)
+            reset_at_close: If True, reset ESP32 when connection closes (default: False)
             on_raw_data: Callback for raw serial data (bytes) - for debugging/logging
         """
         self.port = port
         self.baud = baud
-        self.auto_reset = auto_reset
+        self.reset_at_close = reset_at_close
         self.on_raw_data = on_raw_data
         self.protocol = None
         self.connected = False
@@ -595,7 +625,8 @@ class SmartKnobConnection:
             True if connection successful
         """
         try:
-            self.protocol = SmartKnobProtocol(self.port, self.baud, auto_reset=self.auto_reset, on_raw_data=self.on_raw_data)
+            logger.info(f"Creating SmartKnobProtocol with reset_at_close={self.reset_at_close}")
+            self.protocol = SmartKnobProtocol(self.port, self.baud, reset_at_close=self.reset_at_close, on_raw_data=self.on_raw_data)
             await self.protocol.start(switch_to_protobuf)
             self.connected = True
             
@@ -626,10 +657,66 @@ class SmartKnobConnection:
         if self.protocol:
             self.protocol.on_raw_data = callback
     
+    def ResetAtClose(self, enable: bool):
+        """
+        ResetAtClose(bool) - sets reset behavior persistently.
+        
+        IMPORTANT LIMITATION: Due to ESP32 behavior, this only takes effect 
+        for NEW connections. Changing this on an existing connection will NOT 
+        affect the current connection's close behavior because ESP32 reset 
+        behavior is determined during open(), not close().
+        
+        Args:
+            enable: If True, device will reset when FUTURE connections close
+        """
+        self.reset_at_close = enable
+        if self.protocol:
+            self.protocol.reset_at_close = enable
+        logger.info(f"Reset at close {'enabled' if enable else 'disabled'} (takes effect on next connection)")
+    
     async def send_command(self, command: int):
         """Send command to SmartKnob."""
         if self.protocol:
             await self.protocol.send_command(command)
+        else:
+            raise RuntimeError("Not connected")
+    
+    async def send_config(self, config):
+        """Send configuration to SmartKnob."""
+        if self.protocol:
+            await self.protocol.send_config(config)
+        else:
+            raise RuntimeError("Not connected")
+    
+    async def send_settings(self, settings):
+        """Send settings to SmartKnob."""
+        if self.protocol:
+            await self.protocol.send_settings(settings)
+        else:
+            raise RuntimeError("Not connected")
+    
+    async def send_app_component(self, app_component):
+        """Send app component to SmartKnob."""
+        if self.protocol:
+            return await self.protocol.send_app_component(app_component)
+        else:
+            raise RuntimeError("Not connected")
+    
+    async def send_component(self, component):
+        """Send component to SmartKnob (alias for send_app_component)."""
+        return await self.send_app_component(component)
+    
+    async def send_multi_choice(self, *args, **kwargs):
+        """Send multi choice component to SmartKnob."""
+        if self.protocol:
+            return await self.protocol.send_multi_choice(*args, **kwargs)
+        else:
+            raise RuntimeError("Not connected")
+    
+    async def send_toggle(self, *args, **kwargs):
+        """Send toggle component to SmartKnob."""
+        if self.protocol:
+            return await self.protocol.send_toggle(*args, **kwargs)
         else:
             raise RuntimeError("Not connected")
     
@@ -638,6 +725,13 @@ class SmartKnobConnection:
         if self.protocol:
             return self.protocol.get_stats()
         return {}
+    
+    async def start_read_loop(self):
+        """Start the protocol read loop. Call this within a task group."""
+        if self.protocol:
+            await self.protocol.read_loop()
+        else:
+            raise RuntimeError("Not connected")
     
     async def __aenter__(self):
         """Async context manager entry."""
@@ -648,3 +742,56 @@ class SmartKnobConnection:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.stop()
+    
+    async def reset_device(self) -> bool:
+        """
+        Reset device using simple, reliable method.
+        
+        RESET BEHAVIOR EXPLAINED:
+        ========================
+        - Scenario 1 (No connection): Uses standalone reset - RELIABLE
+        - Scenario 2 (Connected): Disconnect + reconnect with reset enabled
+          
+        NOTE: Due to ESP32 "reset immunity" after first connection, the 
+        "reset while connected" scenario may not always trigger actual reset
+        unless sufficient idle time passes between disconnect/reconnect.
+        
+        Returns:
+            True if reset successful, False otherwise
+        """
+        logger.info(f"Resetting device on {self.port}...")
+        
+        try:
+            if not self.connected:
+                # Scenario 1: No connection - standalone reset
+                logger.info("Performing standalone reset")
+                return await anyio.to_thread.run_sync(
+                    lambda: reset_connection(self.port, self.baud)
+                )
+            else:
+                # Scenario 2: Connected - reset via reconnection
+                logger.info("Resetting via reconnection")
+                
+                # Close current connection
+                await self.stop()
+                await anyio.sleep(0.2)
+                
+                # Reconnect with reset enabled
+                old_reset_at_close = self.reset_at_close
+                self.reset_at_close = True  # Enable reset
+                
+                try:
+                    # This connection will trigger reset due to reset_at_close=True
+                    success = await self.start(switch_to_protobuf=True)
+                    if success:
+                        logger.info("Reset and reconnection successful")
+                        return True
+                    else:
+                        logger.error("Failed to reconnect after reset")
+                        return False
+                finally:
+                    self.reset_at_close = old_reset_at_close
+                    
+        except Exception as e:
+            logger.error(f"Reset failed: {e}")
+            return False

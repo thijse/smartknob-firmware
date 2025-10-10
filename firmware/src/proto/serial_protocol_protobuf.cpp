@@ -1,10 +1,11 @@
 #include "serial_protocol_protobuf.h"
+#include <string.h>
+#include "semaphore_guard.h"
 
 static SerialProtocolProtobuf *singleton_for_packet_serial = 0;
 
 SerialProtocolProtobuf::SerialProtocolProtobuf(Stream &stream) : SerialProtocol(stream)
 {
-
     packet_serial_.setStream(&stream);
 
     // Note: not threadsafe or instance safe!! but PacketSerial requires a legacy function pointer, so we can't
@@ -14,10 +15,25 @@ SerialProtocolProtobuf::SerialProtocolProtobuf(Stream &stream) : SerialProtocol(
 
     packet_serial_.setPacketHandler([](const uint8_t *buffer, size_t size)
                                     { singleton_for_packet_serial->handlePacket(buffer, size); });
+
+    // Initialize TX mutex to serialize protobuf encoding and PacketSerial sends across tasks
+    tx_mutex_ = xSemaphoreCreateMutex();
+    assert(tx_mutex_ != NULL);
+}
+
+SerialProtocolProtobuf::~SerialProtocolProtobuf()
+{
+    if (tx_mutex_ != NULL)
+    {
+        vSemaphoreDelete(tx_mutex_);
+        tx_mutex_ = NULL;
+    }
 }
 
 void SerialProtocolProtobuf::log(const LogMessage &log_msg)
 {
+    // Serialize fill + send to avoid union races across tasks
+    SemaphoreGuard lock(tx_mutex_);
     pb_tx_buffer_ = {};
     pb_tx_buffer_.which_payload = PB_FromSmartKnob_log_tag;
     pb_tx_buffer_.payload.log.level = LogLevelConverter::toPBLogLevel(log_msg.level);
@@ -27,12 +43,16 @@ void SerialProtocolProtobuf::log(const LogMessage &log_msg)
     strlcpy(pb_tx_buffer_.payload.log.msg, log_msg.msg, sizeof(pb_tx_buffer_.payload.log.msg));
     // TODO add timestamp
 
-    sendPBTxBuffer();
+    sendPBTxBufferLocked_();
 }
 
 void SerialProtocolProtobuf::log_raw(const char *msg)
 {
-    LOGW("LOG_RAW NOT IMPLEMENTED FOR PROTOBUF PROTOCOL");
+    // Avoid LOG* here to prevent re-entrant logging deadlocks while tx path may hold tx_mutex_
+    // Emit a minimal diagnostic on the underlying stream separated from COBS packets.
+    stream_.print("[RAW] ");
+    stream_.println(msg ? msg : "(null)");
+    stream_.flush();
 }
 
 void SerialProtocolProtobuf::registerTagCallback(pb_size_t tag, TagCallback callback)
@@ -47,22 +67,22 @@ void SerialProtocolProtobuf::registerCommandCallback(PB_SmartKnobCommand command
 
 void SerialProtocolProtobuf::sendKnobInfo(PB_Knob knob)
 {
-    // LOGI("=== SEND_KNOB_INFO START ===");
+    // Serialize fill + send to avoid union races across tasks
+    SemaphoreGuard lock(tx_mutex_);
     pb_tx_buffer_ = {};
     pb_tx_buffer_.which_payload = PB_FromSmartKnob_knob_tag;
     pb_tx_buffer_.payload.knob = knob;
-    // LOGI("Knob info prepared, MAC: %s, IP: %s", knob.mac_address, knob.ip_address);
-    // LOGI("Calling sendPBTxBuffer...");
-    sendPBTxBuffer();
-    // LOGI("=== SEND_KNOB_INFO END ===");
+    sendPBTxBufferLocked_();
 }
 
 void SerialProtocolProtobuf::sendKnobState(PB_SmartKnobState state)
 {
+    // Serialize fill + send to avoid union races across tasks
+    SemaphoreGuard lock(tx_mutex_);
     pb_tx_buffer_ = {};
     pb_tx_buffer_.which_payload = PB_FromSmartKnob_smartknob_state_tag;
     pb_tx_buffer_.payload.smartknob_state = state;
-    sendPBTxBuffer();
+    sendPBTxBufferLocked_();
 }
 
 void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
@@ -131,8 +151,15 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
         int details = (ac.which_component_config == PB_AppComponent_multi_choice_tag)
                           ? (int)ac.component_config.multi_choice.options_count
                           : -1;
+
+        // SAFETY: nanopb char arrays may not be null-terminated; make a bounded, explicitly terminated copy.
+        size_t id_len = strnlen(ac.component_id, sizeof(ac.component_id));
+        char id_buf[sizeof(ac.component_id) + 1];
+        memcpy(id_buf, ac.component_id, id_len);
+        id_buf[id_len] = '\0';
+
         LOGI("SerialProtocolProtobuf: AppComponent id='%s' type=%d which=%d options_count=%d",
-             ac.component_id, (int)ac.type, (int)ac.which_component_config, details);
+             id_buf, (int)ac.type, (int)ac.which_component_config, details);
     }
 
     // todo: what is the difference between a tag callback and a button command?
@@ -157,7 +184,7 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
 
                 vTaskDelete(NULL);
             },
-            "tag_handler_task", 1024 * 8, params, 5, NULL);
+            "tag_handler_task", 1024 * 12, params, 5, NULL);
     }
     else if (pb_rx_buffer_.which_payload == PB_ToSmartknob_smartknob_command_tag)
     {
@@ -179,7 +206,7 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
                     // LOGI("=== COMMAND TASK ENDING ===");
                     vTaskDelete(NULL);
                 },
-                "key_handler_task", 1024 * 8, handler, 5, NULL); // TODO stack size and priority?
+                "key_handler_task", 1024 * 10, handler, 5, NULL); // TODO stack size and priority?
             // LOGI("Task creation completed");
         }
         else
@@ -195,18 +222,26 @@ void SerialProtocolProtobuf::handlePacket(const uint8_t *buffer, size_t size)
 
 void SerialProtocolProtobuf::sendPBTxBuffer()
 {
-    // Encode protobuf message to byte buffer
+    // Public wrapper: take the mutex then perform the encode/send
+    SemaphoreGuard lock(tx_mutex_);
+    sendPBTxBufferLocked_();
+}
 
+void SerialProtocolProtobuf::sendPBTxBufferLocked_()
+{
+    // Encode protobuf message to byte buffer (assumes tx_mutex_ is held)
     pb_ostream_t stream = pb_ostream_from_buffer(tx_buffer_, sizeof(tx_buffer_));
     pb_tx_buffer_.protocol_version = PROTOBUF_PROTOCOL_VERSION;
 
     stream.bytes_written = 0;
     if (!pb_encode(&stream, PB_FromSmartKnob_fields, &pb_tx_buffer_))
     {
+        // Avoid LOGE here to prevent re-entrant protobuf logging while tx_mutex_ is held
+        stream_.print("PB encode error: ");
         stream_.println(stream.errmsg);
+        stream_.print("PB bytes written when failed: ");
+        stream_.println((unsigned)stream.bytes_written);
         stream_.flush();
-        LOGE("PB Encoding failed: %s", stream.errmsg);
-        LOGE("PB Bytes written when failed: %d", stream.bytes_written);
         return;
     }
 
@@ -228,10 +263,12 @@ void SerialProtocolProtobuf::ack(uint32_t nonce)
     // Verbose ACK diagnostics to correlate with host-side ACK wait
     LOGI("SerialProtocolProtobuf: ACK sent nonce=%u", (unsigned)nonce);
 
+    // Serialize fill + send to avoid union races across tasks
+    SemaphoreGuard lock(tx_mutex_);
     pb_tx_buffer_ = {};
     pb_tx_buffer_.which_payload = PB_FromSmartKnob_ack_tag;
     pb_tx_buffer_.payload.ack.nonce = nonce;
-    sendPBTxBuffer();
+    sendPBTxBufferLocked_();
 }
 
 void SerialProtocolProtobuf::readSerial()

@@ -4,7 +4,7 @@
 #include "../util.h"
 #include "../root_task.h"
 #include <logging.h>
-
+#include <string.h>
 ComponentManager::ComponentManager(RootTask &root_task, SemaphoreHandle_t mutex) : root_task_(root_task), screen_mutex_(mutex)
 {
     component_mutex_ = xSemaphoreCreateMutex();
@@ -47,63 +47,111 @@ void ComponentManager::clear()
 
 EntityStateUpdate ComponentManager::update(AppState state)
 {
-    // TODO: update with AppState
-    SemaphoreGuard lock(component_mutex_);
-    EntityStateUpdate new_state_update;
-
-    if (active_component_ != nullptr)
+    // Take a safe local copy of the active component under lock, then operate without holding the mutex.
+    std::shared_ptr<Component> local_active;
     {
-        // Relaxed: always forward state to the active component
-        new_state_update = active_component_->updateStateFromKnob(state.motor_state);
-        active_component_->updateStateFromSystem(state);
+        SemaphoreGuard lock(component_mutex_);
+        local_active = active_component_;
     }
 
+    EntityStateUpdate new_state_update;
+    if (local_active != nullptr)
+    {
+        new_state_update = local_active->updateStateFromKnob(state.motor_state);
+        local_active->updateStateFromSystem(state);
+    }
     return new_state_update;
 }
 
 void ComponentManager::render()
 {
-    if (active_component_)
+    // Take a safe local copy under lock to avoid TOCTOU/use-after-free
+    std::shared_ptr<Component> local_active;
     {
-        active_component_->render();
+        SemaphoreGuard lock(component_mutex_);
+        local_active = active_component_;
+    }
+
+    if (local_active)
+    {
+        LOGI("ComponentManager: render begin active='%s' type=%d",
+             local_active->getComponentId(), (int)local_active->getType());
+        local_active->render();
+        LOGI("ComponentManager: render end active='%s'", local_active->getComponentId());
     }
 };
 
 bool ComponentManager::setActiveComponent(const std::string &component_id)
 {
-    SemaphoreGuard lock(component_mutex_);
-
-    auto it = components_.find(component_id);
-    if (it == components_.end())
+    std::shared_ptr<Component> local_active;
     {
-        LOGW("Component not found: %s", component_id.c_str());
-        return false;
+        SemaphoreGuard lock(component_mutex_);
+
+        auto it = components_.find(component_id);
+        if (it == components_.end())
+        {
+            LOGW("Component not found: %s", component_id.c_str());
+            return false;
+        }
+
+        active_component_ = it->second;
+        local_active = active_component_;
+        LOGI("ComponentManager: setActiveComponent('%s') type=%d", component_id.c_str(), (int)active_component_->getType());
+        root_task_.setComponentMode(true);
     }
 
-    active_component_ = it->second;
-    LOGI("ComponentManager: setActiveComponent('%s') type=%d", component_id.c_str(), (int)active_component_->getType());
-    root_task_.setComponentMode(true);
-    render(); // CRITICAL: Apps pattern - always call render when setting active
+    // Call render outside the component mutex to avoid deadlocks with render() re-locking
+    render(); // Ensure screen reflects the new active component
     return true;
 }
 
 bool ComponentManager::createComponent(PB_AppComponent config) // Pass by value
 {
-    // Validate configuration
-    if (strlen(config.component_id) == 0)
+    LOGI("ComponentManager: createComponent ENTRY type=%d which=%d", (int)config.type, (int)config.which_component_config);
+
+    // Validate configuration and make a safe, null-terminated copy of component_id
+    size_t id_len = strnlen(config.component_id, sizeof(config.component_id));
+    LOGI("ComponentManager: createComponent id_len=%u", (unsigned)id_len);
+    if (id_len == 0)
     {
         LOGE("ComponentManager: Component ID is empty");
         return false;
     }
+    char id_buf[sizeof(config.component_id) + 1];
+    memcpy(id_buf, config.component_id, id_len);
+    id_buf[id_len] = '\0';
+    std::string component_id(id_buf);
 
     LOGI("ComponentManager: Creating component '%s' (type=%d)",
-         config.component_id, config.type);
+         component_id.c_str(), config.type);
+    // Verbose: dump type-specific config preview to verify first-creation parity
+    if (config.type == PB_ComponentType_TOGGLE && config.which_component_config == PB_AppComponent_toggle_tag)
+    {
+        const auto &t = config.component_config.toggle;
+        LOGI("ComponentManager: TOGGLE cfg id='%s' snap_point=%.2f bias=%.2f detent=%.2f hues off/on=%d/%d initial_state=%d",
+             id_buf,
+             (double)t.snap_point, (double)t.snap_point_bias, (double)t.detent_strength_unit,
+             (int)t.off_led_hue, (int)t.on_led_hue, (int)t.initial_state);
+    }
+    else if (config.type == PB_ComponentType_MULTI_CHOICE && config.which_component_config == PB_AppComponent_multi_choice_tag)
+    {
+        const auto &m = config.component_config.multi_choice;
+        LOGI("ComponentManager: MULTI_CHOICE cfg id='%s' options=%d initial_index=%d detent=%.2f endstop=%.2f hue=%d wrap=%d",
+             id_buf,
+             (int)m.options_count, (int)m.initial_index,
+             (double)m.detent_strength_unit, (double)m.endstop_strength_unit, (int)m.led_hue, (int)m.wrap_around);
+    }
 
     bool need_activate = false;
     bool need_refresh = false;
 
-    std::string component_id(config.component_id);
+    std::string component_id_copy = component_id;      // maintain original variable name usage below
+    std::string &component_id_ref = component_id_copy; // alias for compatibility
+    std::string component_id_original = component_id;  // backup (not strictly needed)
+    // Ensure we proceed using 'component_id' identifier
+    component_id = component_id_ref;
 
+    // Pre-create optimization removed: createComponentByType will be invoked inside the lock
     {
         // Serialize all mutations and pointer updates under component_mutex_
         SemaphoreGuard lock(component_mutex_);
@@ -117,7 +165,7 @@ bool ComponentManager::createComponent(PB_AppComponent config) // Pass by value
             if (current_type != config.type)
             {
                 LOGW("ComponentManager: Type change for '%s': %d -> %d, recreating component",
-                     config.component_id, (int)current_type, (int)config.type);
+                     component_id.c_str(), (int)current_type, (int)config.type);
 
                 bool wasActive = (active_component_ == existing->second);
 
@@ -131,17 +179,17 @@ bool ComponentManager::createComponent(PB_AppComponent config) // Pass by value
                 // Erase existing instance (shared_ptr will release when last ref drops)
                 components_.erase(existing);
 
-                // Create new instance of requested type
+                // Create new instance of requested type (prefer pre-created outside lock)
                 auto new_component = createComponentByType(config.type, config);
                 if (!new_component)
                 {
                     LOGE("ComponentManager: Failed to recreate component '%s' of type %d",
-                         config.component_id, (int)config.type);
+                         component_id.c_str(), (int)config.type);
                     return false;
                 }
 
                 // Store and wire motor notifier
-                components_[component_id] = std::move(new_component);
+                components_[component_id] = new_component;
                 if (motor_notifier_ != nullptr)
                 {
                     components_[component_id]->setMotorNotifier(motor_notifier_);
@@ -155,17 +203,17 @@ bool ComponentManager::createComponent(PB_AppComponent config) // Pass by value
                     need_activate = true; // defer render/motor update until after unlocking
                 }
 
-                LOGI("ComponentManager: Component '%s' recreated successfully", config.component_id);
+                LOGI("ComponentManager: Component '%s' recreated successfully", component_id.c_str());
             }
             else
             {
-                LOGI("ComponentManager: Reconfiguring existing component '%s'", config.component_id);
+                LOGI("ComponentManager: Reconfiguring existing component '%s'", component_id.c_str());
 
                 // Reconfigure existing component of same type
                 bool success = existing->second->configure(config);
                 if (!success)
                 {
-                    LOGE("ComponentManager: Failed to reconfigure component '%s'", config.component_id);
+                    LOGE("ComponentManager: Failed to reconfigure component '%s'", component_id.c_str());
                     return false;
                 }
 
@@ -175,23 +223,23 @@ bool ComponentManager::createComponent(PB_AppComponent config) // Pass by value
                     need_refresh = true;
                 }
 
-                LOGI("ComponentManager: Component '%s' reconfigured successfully", config.component_id);
+                LOGI("ComponentManager: Component '%s' reconfigured successfully", component_id.c_str());
             }
         }
         else
         {
-            // Create new component
+            // Create new component (prefer pre-created outside lock)
             LOGI("ComponentManager: About to create component of type %d", config.type);
-            auto component = createComponentByType(config.type, config); // Pass the copy forward
+            auto component = createComponentByType(config.type, config);
             if (!component)
             {
                 LOGE("ComponentManager: Failed to create component of type %d", config.type);
                 return false;
             }
-            LOGI("ComponentManager: Component '%s' created and configured in constructor", config.component_id);
+            LOGI("ComponentManager: Component '%s' created and configured in constructor", component_id.c_str());
 
             // Store the component
-            components_[component_id] = std::move(component);
+            components_[component_id] = component;
 
             // Set motor notifier if available (like Apps do)
             if (motor_notifier_)
@@ -199,7 +247,7 @@ bool ComponentManager::createComponent(PB_AppComponent config) // Pass by value
                 components_[component_id]->setMotorNotifier(motor_notifier_);
             }
 
-            LOGI("ComponentManager: Component '%s' created successfully", config.component_id);
+            LOGI("ComponentManager: Component '%s' created successfully", component_id.c_str());
         }
     } // unlock component_mutex_
 
@@ -325,14 +373,14 @@ std::shared_ptr<Component> ComponentManager::createComponentByType(
     switch (type)
     {
     case PB_ComponentType_TOGGLE:
-        LOGI("ComponentManager: Creating ToggleComponent '%s' with full config", config.component_id);
+        LOGI("ComponentManager: Creating ToggleComponent with full config");
         return std::shared_ptr<Component>(new ToggleComponent(
             screen_mutex_, // Pass mutex to App constructor
             config         // Pass the temporary copy, which is valid during the constructor call
             ));
 
     case PB_ComponentType_MULTI_CHOICE:
-        LOGI("ComponentManager: Creating MultipleChoice '%s' with full config", config.component_id);
+        LOGI("ComponentManager: Creating MultipleChoice with full config");
         return std::shared_ptr<Component>(new MultipleChoice(
             screen_mutex_, // Pass mutex to App constructor
             config         // Pass the temporary copy, which is valid during the constructor call

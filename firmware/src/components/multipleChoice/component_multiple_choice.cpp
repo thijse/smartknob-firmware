@@ -78,10 +78,15 @@ MultipleChoice::MultipleChoice(
         0,                         // snap_point_bias
         config_.led_hue            // led_hue
     };
-    strncpy(motor_config.id, component_config_.component_id, sizeof(motor_config.id) - 1);
+    {
+        size_t src_len = strnlen(component_id_, sizeof(component_id_));
+        size_t copy_len = (src_len < sizeof(motor_config.id) - 1) ? src_len : (sizeof(motor_config.id) - 1);
+        memcpy(motor_config.id, component_id_, copy_len);
+        motor_config.id[copy_len] = '\0';
+    }
 
     LOGI("MultipleChoice: Created component '%s' with %d options, initial index %d",
-         component_config_.component_id, config_.options_count, current_position);
+         component_id_, config_.options_count, current_position);
 
     // Initialize screen (like ToggleComponent)
     initScreen();
@@ -179,27 +184,45 @@ EntityStateUpdate MultipleChoice::updateStateFromKnob(PB_SmartKnobState state)
         motor_config.position = current_position;
         motor_config.position_nonce = current_position;
 
-        // Create state update with safe text handling
-        const char *safe_text = get_selected_text();
-        char truncated_text[32]; // Safe size for JSON
+        // Create state update with safe text handling (bounded copy; nanopb may not null-terminate)
+        const char *opt_text = get_selected_text();
+        char safe_text[64];
+        size_t opt_len = strnlen(opt_text ? opt_text : "", sizeof(((PB_MultiChoiceConfig *)0)->options[0]));
+        size_t copy_len = (opt_len < sizeof(safe_text) - 1) ? opt_len : (sizeof(safe_text) - 1);
+        memcpy(safe_text, opt_text ? opt_text : "", copy_len);
+        safe_text[copy_len] = '\0';
 
-        if (safe_text && strlen(safe_text) > 30)
+        // Prepare JSON-safe max 30 chars with ellipsis if truncated
+        char json_text[32];
+        if (copy_len > 30)
         {
-            strncpy(truncated_text, safe_text, 27);
-            strcpy(truncated_text + 27, "...");
-            safe_text = truncated_text;
+            memcpy(json_text, safe_text, 27);
+            memcpy(json_text + 27, "...", 3);
+            json_text[30] = '\0';
+        }
+        else
+        {
+            memcpy(json_text, safe_text, copy_len);
+            json_text[copy_len] = '\0';
         }
 
         sprintf(new_state.app_id, "%s", component_id_);
         sprintf(new_state.entity_id, "%s", component_id_);
-        sprintf(new_state.state, "{\"selected_index\": %d, \"selected_text\": \"%.30s\"}",
-                current_position, safe_text ? safe_text : "");
+        sprintf(new_state.state, "{\"selected_index\": %d, \"selected_text\": \"%s\"}",
+                current_position, json_text);
         new_state.changed = true;
 
         publishStateUpdate();
 
-        LOGI("MultipleChoice: Selection changed to index %d: '%s'",
-             current_position, get_selected_text());
+        {
+            const char *opt = get_selected_text();
+            char log_text[64];
+            size_t opt_len2 = strnlen(opt ? opt : "", sizeof(((PB_MultiChoiceConfig *)0)->options[0]));
+            size_t copy2 = (opt_len2 < sizeof(log_text) - 1) ? opt_len2 : (sizeof(log_text) - 1);
+            memcpy(log_text, opt ? opt : "", copy2);
+            log_text[copy2] = '\0';
+            LOGI("MultipleChoice: Selection changed to index %d: '%s'", current_position, log_text);
+        }
 
         // Update persistent objects (like ToggleComponent)
         updateDisplay();
@@ -288,26 +311,21 @@ void MultipleChoice::updateDisplay()
         if (option_label_ != nullptr)
         {
             const char *current_text = get_selected_text();
-            if (current_text && strlen(current_text) > 0)
-            {
-                // Protect against overly long text that could cause display issues
-                static char safe_text[64]; // Safe buffer size for display
-                strncpy(safe_text, current_text, sizeof(safe_text) - 1);
-                safe_text[sizeof(safe_text) - 1] = '\0'; // Ensure null termination
+            // Safe copy with bounded length since options may not be null-terminated
+            static char safe_text[64];
+            size_t src_len = strnlen(current_text ? current_text : "", sizeof(((PB_MultiChoiceConfig *)0)->options[0]));
+            size_t cpy = (src_len < sizeof(safe_text) - 1) ? src_len : (sizeof(safe_text) - 1);
+            memcpy(safe_text, current_text ? current_text : "", cpy);
+            safe_text[cpy] = '\0';
 
-                // Truncate with ellipsis if too long
-                if (strlen(current_text) >= sizeof(safe_text) - 3)
-                {
-                    strcpy(safe_text + sizeof(safe_text) - 4, "...");
-                    LOGW("MultipleChoice: Text truncated - original length %d", (int)strlen(current_text));
-                }
-
-                lv_label_set_text(option_label_, safe_text);
-            }
-            else
+            // Truncate with ellipsis if too long for our display buffer
+            if (cpy >= sizeof(safe_text) - 3)
             {
-                lv_label_set_text(option_label_, "ERROR");
+                strcpy(safe_text + sizeof(safe_text) - 4, "...");
+                LOGW("MultipleChoice: Text truncated - original length %d", (int)src_len);
             }
+
+            lv_label_set_text(option_label_, safe_text);
         }
 
         // Update position indicator (like "1/5")
@@ -320,8 +338,16 @@ void MultipleChoice::updateDisplay()
         }
     } // ✅ Mutex automatically released here
 
-    LOGI("MultipleChoice: Updated display - option %d/%d: '%s'",
-         current_position + 1, config_.options_count, get_selected_text());
+    {
+        const char *opt = get_selected_text();
+        char log_text[64];
+        size_t len = strnlen(opt ? opt : "", sizeof(((PB_MultiChoiceConfig *)0)->options[0]));
+        size_t cpy = (len < sizeof(log_text) - 1) ? len : (sizeof(log_text) - 1);
+        memcpy(log_text, opt ? opt : "", cpy);
+        log_text[cpy] = '\0';
+        LOGI("MultipleChoice: Updated display - option %d/%d: '%s'",
+             current_position + 1, config_.options_count, log_text);
+    }
 }
 
 // === Reconfiguration support for MultipleChoice ===

@@ -48,12 +48,12 @@ public:
     /**
      * Get the unique ID of this component.
      */
-    const char *getComponentId() const { return component_config_.component_id; }
+    const char *getComponentId() const { return component_id_; }
 
     /**
      * Get the display name of this component.
      */
-    const char *getDisplayName() const { return component_config_.display_name; }
+    const char *getDisplayName() const { return display_name_; }
 
     /**
      * Get the component type.
@@ -89,6 +89,7 @@ public:
 protected:
     // ========== Component State ==========
 
-    char component_id_[33];            // Unique component identifier
+    char component_id_[33];            // Unique component identifier (safe, null-terminated)
+    char display_name_[65];            // Human-readable display name (safe, null-terminated)
     PB_AppComponent component_config_; // Current configuration
 };

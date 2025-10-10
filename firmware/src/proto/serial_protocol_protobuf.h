@@ -7,6 +7,7 @@
 
 #include <PacketSerial.h>
 #include <logging/adapters/freertos/protocols/serial/serial_protocol.h>
+#include <semphr.h>
 
 #include "proto_gen/smartknob.pb.h"
 #include "proto_helpers.h"
@@ -25,7 +26,7 @@ public:
     using CommandCallback = std::function<void()>;
 
     SerialProtocolProtobuf(Stream &stream);
-    ~SerialProtocolProtobuf() {}
+    ~SerialProtocolProtobuf();
 
     void log(const LogMessage &log_msg) override;
     void log_raw(const char *msg) override;
@@ -55,6 +56,11 @@ protected:
     void ack(uint32_t nonce);
 
 private:
+    // Protect pb_tx_buffer_, tx_buffer_ and PacketSerial::send against concurrent access
+    SemaphoreHandle_t tx_mutex_;
+    // Internal helper: assumes tx_mutex_ is already held; encodes and sends pb_tx_buffer_
+    void sendPBTxBufferLocked_();
+
     std::map<pb_size_t, TagCallback> tag_callbacks_;
     std::map<PB_SmartKnobCommand, CommandCallback> command_callbacks_;
 };
