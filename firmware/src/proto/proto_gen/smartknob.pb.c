@@ -16,7 +16,7 @@ PB_BIND(PB_Knob, PB_Knob, AUTO)
 
 
 PB_BIND(PB_MotorCalibState, PB_MotorCalibState, AUTO)
- 
+
 
 PB_BIND(PB_StrainCalibState, PB_StrainCalibState, AUTO)
 
@@ -34,6 +34,9 @@ PB_BIND(PB_SmartKnobConfig, PB_SmartKnobConfig, AUTO)
 
 
 PB_BIND(PB_RequestState, PB_RequestState, AUTO)
+
+
+PB_BIND(PB_AppSelect, PB_AppSelect, AUTO)
 
 
 PB_BIND(PB_PersistentConfiguration, PB_PersistentConfiguration, AUTO)

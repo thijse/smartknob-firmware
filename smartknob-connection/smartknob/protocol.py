@@ -590,6 +590,93 @@ class SmartKnobProtocol:
         t.on_led_hue = int(on_led_hue)
 
         return await self.send_app_component(app_component)
+
+    async def send_app_select(self, *, by_id: Optional[int] = None, by_app_id: Optional[str] = None) -> int:
+        """
+        Compose and send an AppSelect message to switch the active app.
+        Exactly one selector must be provided: by_id or by_app_id.
+        Enforces app_id length ≤ 32. Returns the assigned nonce.
+        """
+        # Validate selector
+        if (by_id is None and by_app_id is None) or (by_id is not None and by_app_id is not None):
+            raise ValueError("Provide exactly one of by_id or by_app_id")
+
+        message = smartknob_pb2.ToSmartknob()
+        sel = smartknob_pb2.AppSelect()
+        if by_id is not None:
+            if int(by_id) < 0:
+                raise ValueError("by_id must be a non-negative integer")
+            sel.by_id = int(by_id)
+            log_desc = f"by_id={sel.by_id}"
+        else:
+            app_id = str(by_app_id)
+            if len(app_id) > 32:
+                raise ValueError("app_id must be ≤ 32 characters")
+            sel.by_app_id = app_id
+            log_desc = f"by_app_id='{sel.by_app_id}'"
+
+        message.app_select.CopyFrom(sel)
+        await self._enqueue_message(message)
+        logger.info(f"Sent app_select ({log_desc})")
+        return message.nonce
+
+    async def _send_frame_immediate(self, message: smartknob_pb2.ToSmartknob) -> int:
+        """
+        Fire-and-forget send that bypasses the queue and does not wait for ACK.
+        Use for single-shot messages (e.g., request_state) to avoid queue head-of-line blocking.
+        Returns the nonce assigned.
+        """
+        if not self.serial:
+            raise RuntimeError("Serial not open")
+        # Stamp protocol and nonce
+        message.protocol_version = self.protocol_version
+        self.last_nonce += 1
+        message.nonce = self.last_nonce
+        # Encode and write
+        payload = message.SerializeToString()
+        frame = self._encode_frame(payload)
+        try:
+            self.serial.write(frame)
+            self.serial.flush()
+            self.stats.messages_sent += 1
+            logger.debug(f"Sent immediate (no-queue) message nonce={message.nonce}")
+        except Exception as e:
+            logger.error(f"Immediate send failed: {e}")
+            self.port_available = False
+        return message.nonce
+
+    async def send_request_state_immediate(self) -> int:
+        """
+        Send a ToSmartknob.request_state as an immediate (no-queue) frame.
+        Returns the assigned nonce.
+        """
+        m = smartknob_pb2.ToSmartknob()
+        m.request_state.SetInParent()
+        return await self._send_frame_immediate(m)
+
+    async def send_app_select_immediate(self, *, by_id: Optional[int] = None, by_app_id: Optional[str] = None) -> int:
+        """
+        Send AppSelect as an immediate (no-queue) frame. Exactly one selector required.
+        """
+        if (by_id is None and by_app_id is None) or (by_id is not None and by_app_id is not None):
+            raise ValueError("Provide exactly one of by_id or by_app_id")
+        m = smartknob_pb2.ToSmartknob()
+        sel = smartknob_pb2.AppSelect()
+        if by_id is not None:
+            if int(by_id) < 0:
+                raise ValueError("by_id must be a non-negative integer")
+            sel.by_id = int(by_id)
+            log_desc = f"by_id={sel.by_id}"
+        else:
+            app_id = str(by_app_id)
+            if len(app_id) > 32:
+                raise ValueError("app_id must be ≤ 32 characters")
+            sel.by_app_id = app_id
+            log_desc = f"by_app_id='{sel.by_app_id}'"
+        m.app_select.CopyFrom(sel)
+        nonce = await self._send_frame_immediate(m)
+        logger.info(f"Sent app_select immediate ({log_desc})")
+        return nonce
 class SmartKnobConnection:
     """
     SmartKnob connection manager using AnyIO.
@@ -717,6 +804,27 @@ class SmartKnobConnection:
         """Send toggle component to SmartKnob."""
         if self.protocol:
             return await self.protocol.send_toggle(*args, **kwargs)
+        else:
+            raise RuntimeError("Not connected")
+    
+    async def send_app_select(self, *, by_id: Optional[int] = None, by_app_id: Optional[str] = None):
+        """Select app by id or app_id."""
+        if self.protocol:
+            return await self.protocol.send_app_select(by_id=by_id, by_app_id=by_app_id)
+        else:
+            raise RuntimeError("Not connected")
+
+    async def send_request_state_immediate(self):
+        """Send request_state as an immediate (no-queue) frame."""
+        if self.protocol:
+            return await self.protocol.send_request_state_immediate()
+        else:
+            raise RuntimeError("Not connected")
+
+    async def send_app_select_immediate(self, *, by_id: Optional[int] = None, by_app_id: Optional[str] = None):
+        """Select app immediate (no-queue) by id or app_id."""
+        if self.protocol:
+            return await self.protocol.send_app_select_immediate(by_id=by_id, by_app_id=by_app_id)
         else:
             raise RuntimeError("Not connected")
     

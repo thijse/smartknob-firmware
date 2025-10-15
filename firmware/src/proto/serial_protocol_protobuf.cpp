@@ -1,7 +1,7 @@
 #include "serial_protocol_protobuf.h"
 #include <string.h>
 #include "semaphore_guard.h"
-
+ 
 static SerialProtocolProtobuf *singleton_for_packet_serial = 0;
 
 SerialProtocolProtobuf::SerialProtocolProtobuf(Stream &stream) : SerialProtocol(stream)

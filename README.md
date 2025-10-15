@@ -45,7 +45,7 @@ Using PlatformIO in Visual Studio Code:
 ### 2. Python Backend Setup
 
 ```bash
-cd smartknob-connection2
+cd smartknob-connection
 python -m venv venv
 # Windows:
 venv\Scripts\activate
@@ -160,9 +160,9 @@ python examples/basic_monitoring.py
 
 ## Documentation
 
-- **[Protocol Specification](smartknob-connection2/Documentation/PROTOCOL.md)** - Technical protocol details
-- **[Implementation Guide](smartknob-connection2/Documentation/IMPLEMENTATION.md)** - Library architecture
-- **[Troubleshooting](smartknob-connection2/Documentation/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Protocol Specification](docs/PythonClient/PROTOCOL.md)** - Technical protocol details
+- **[Implementation Guide](docs/PythonClient/IMPLEMENTATION.md)** - Library architecture
+- **[Troubleshooting](docs/PythonClient/TROUBLESHOOTING.md)** - Common issues and solutions
 
 ## License
 

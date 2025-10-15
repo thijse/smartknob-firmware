@@ -115,6 +115,14 @@ private:
 
     uint32_t last_calib_state_sent_ = 0;
 
+    // Deferred confirmation after app_select:
+    // We schedule one confirmation state to be sent once the motor config id
+    // matches the target app_id selected by the host, to avoid race conditions.
+    char pending_confirm_app_id_[33] = {0}; // target app_id (null-terminated)
+    bool deferred_confirm_pending_ = false; // true when a deferred confirm is pending
+    // For by_id selections (no string target available), detect config change:
+    char previous_config_id_at_select_[33] = {0}; // config.id at selection time
+
     void updateHardware(AppState *app_state);
     void publishState();
     void applyConfig(PB_SmartKnobConfig config, bool from_remote);

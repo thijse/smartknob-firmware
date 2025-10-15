@@ -28,6 +28,7 @@ public:
     EntityStateUpdate update(AppState state);
     void render();
     void setActive(int8_t id);
+    void setActiveByAppId(char *app_id);
 
     App *loadApp(uint8_t position, std::string app_slug, char *app_id, char *friendly_name, char *entity_id);
     void updateMenu();

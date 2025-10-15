@@ -106,5 +106,11 @@
         "task": "FLASH RELEASE",
         "tooltip": "FLASH RELEASE",
         "description": "FLASH RELEASE",
-      }]
+    }
+],
+"cSpell.words": [
+    "LOGD",
+    "LOGI",
+    "Smartknob"
+]
 }

@@ -96,6 +96,70 @@ void RootTask::run()
     serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_request_state_tag, [this](const PB_ToSmartknob &to_smartknob)
                                                    { sendCurrentKnobState(); });
 
+    // External app selection handler (Apps mode; minimal-change path)
+    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_app_select_tag, [this](const PB_ToSmartknob &to_smartknob)
+                                                   {
+                                                       const PB_AppSelect &sel = to_smartknob.payload.app_select;
+
+                                                       LOGD("Remote request for app selection received"); // Debugging for 2nd call failure
+
+                                                       // Ensure classic Apps mode for routing and UI
+                                                       setComponentMode(false);
+
+                                                       Apps *apps = display_task_ ? display_task_->getApps() : nullptr;
+                                                       if (!apps)
+                                                       {
+                                                           LOGE("AppSelect: Apps not available");
+                                                           return;
+                                                       }
+
+                                                       switch (sel.which_selector)
+                                                       {
+                                                       case PB_AppSelect_by_id_tag:
+                                                       {
+                                                           uint8_t id = (uint8_t)sel.selector.by_id;
+                                                           LOGI("AppSelect: by_id=%u", (unsigned)id);
+
+                                                           apps->setActive((int8_t)id);
+
+                                                           // Schedule a single deferred confirmation on next loop tick.
+                                                           // For by_id we don't have the string app_id here; send once unconditionally.
+                                                           pending_confirm_app_id_[0] = '\0';
+                                                           deferred_confirm_pending_ = true;
+                                                           LOGI("AppSelect: scheduled deferred confirmation (by_id=%u)", (unsigned)id);
+
+                                                           apps->triggerMotorConfigUpdate();
+                                                           // Immediate confirmation (may precede motor config propagation)
+                                                           sendCurrentKnobState();
+                                                           break;
+                                                       }
+                                                       case PB_AppSelect_by_app_id_tag:
+                                                       {
+                                                           // SAFETY: nanopb char arrays may not be null-terminated; bounded copy with explicit terminator
+                                                           size_t id_len = strnlen(sel.selector.by_app_id, sizeof(sel.selector.by_app_id));
+                                                           char id_buf[sizeof(sel.selector.by_app_id) + 1];
+                                                           memcpy(id_buf, sel.selector.by_app_id, id_len);
+                                                           id_buf[id_len] = '\0';
+
+                                                           LOGI("AppSelect: by_app_id='%s'", id_buf);
+
+                                                           apps->setActiveByAppId(id_buf);
+
+                                                           // Schedule deferred confirmation for this target id
+                                                           strlcpy(pending_confirm_app_id_, id_buf, sizeof(pending_confirm_app_id_));
+                                                           deferred_confirm_pending_ = true;
+                                                           LOGI("AppSelect: scheduled deferred confirmation for '%s'", pending_confirm_app_id_);
+
+                                                           apps->triggerMotorConfigUpdate();
+                                                           // Immediate confirmation (may precede motor config propagation)
+                                                           sendCurrentKnobState();
+                                                           break;
+                                                       }
+                                                       default:
+                                                           LOGW("AppSelect: selector not set");
+                                                           break;
+                                                       } });
+
     // Component system protocol handler
     serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_app_component_tag, [this](const PB_ToSmartknob &to_smartknob)
                                                    {
@@ -416,6 +480,29 @@ void RootTask::run()
             if (auto_broadcast_enabled_)
             {
                 checkAndBroadcastState();
+            }
+
+            // Deferred confirmation guard: after selection, send a single confirmation
+            // once firmware state.config.id matches the target app_id we selected.
+            if (deferred_confirm_pending_)
+            {
+                if (pending_confirm_app_id_[0] != '\0')
+                {
+                    if (strcmp(latest_state_.config.id, pending_confirm_app_id_) == 0)
+                    {
+                        LOGI("Deferred confirm: config.id='%s' matches target; sending confirmation", latest_state_.config.id);
+                        sendCurrentKnobState();
+                        deferred_confirm_pending_ = false;
+                        pending_confirm_app_id_[0] = '\0';
+                    }
+                }
+                else
+                {
+                    // No specific app_id to match (by_id path): send one confirmation and clear.
+                    LOGI("Deferred confirm: by_id path; sending single confirmation");
+                    sendCurrentKnobState();
+                    deferred_confirm_pending_ = false;
+                }
             }
         }
 

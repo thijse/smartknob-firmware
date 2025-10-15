@@ -34,8 +34,9 @@ message FromSmartKnob {
         StrainCalibration strain_calibration = 6;
         SETTINGS.Settings settings = 7;
         AppComponent app_component = 8;
+        AppSelect app_select = 9;
     }
-}
+ }
 
 /** Initial knob information. */
 message Knob {
@@ -246,6 +247,17 @@ message SmartKnobConfig {
 }
 
 message RequestState {}
+
+message AppSelect {
+    // Use oneof to avoid ambiguity (e.g., id=0 is a valid app index).
+    oneof selector {
+        // Select by numeric app index (0..255). Preferred for compactness.
+        uint32 by_id = 1 [(nanopb).int_size = IS_8];
+
+        // Alternative: select by string app_id (e.g., "light_dimmer").
+        string by_app_id = 2 [(nanopb).max_length = 32];
+    }
+}
 
 message PersistentConfiguration {
     uint32 version = 1;

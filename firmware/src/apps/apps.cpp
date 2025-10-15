@@ -1,4 +1,4 @@
-#include "apps.h"
+#include "apps.h" 
 
 Apps::Apps(SemaphoreHandle_t mutex) : screen_mutex_(mutex)
 {
@@ -248,4 +248,35 @@ std::shared_ptr<App> Apps::find(char *app_id)
 void Apps::setOSConfigNotifier(OSConfigNotifier *os_config_notifier)
 {
     os_config_notifier_ = os_config_notifier;
+}
+void Apps::setActiveByAppId(char *app_id)
+{
+    SemaphoreGuard lock(app_mutex_);
+
+    if (app_id == nullptr)
+    {
+        LOGW("setActiveByAppId: null app_id");
+        return;
+    }
+
+    // Find matching app and its numeric id
+    int8_t target_id = DONT_NAVIGATE;
+    for (auto &pair : apps)
+    {
+        auto &app_ptr = pair.second;
+        if (app_ptr && strcmp(app_ptr->app_id, app_id) == 0)
+        {
+            target_id = (int8_t)pair.first;
+            break;
+        }
+    }
+
+    if (target_id == DONT_NAVIGATE)
+    {
+        LOGW("setActiveByAppId: not found '%s'", app_id);
+        return;
+    }
+
+    // Delegate to existing setActive() to render under LVGL mutex and update active_app
+    setActive(target_id);
 }

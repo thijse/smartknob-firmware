@@ -1,4 +1,4 @@
-#include "app.h"
+#include "app.h" 
 #include <logging.h>
 
 App::App(SemaphoreHandle_t mutex) : mutex_(mutex)
