@@ -1,4 +1,4 @@
-#include "root_task.h"
+#include "root_task.h" 
 #include "app_config.h"
 #include "semaphore_guard.h"
 #include "util.h"
@@ -619,6 +619,10 @@ void RootTask::updateHardware(AppState *app_state)
 
                     LOGD("Handling short press");
                     motor_task_.playHaptic(true, false);
+                    
+                    // Increment press nonce for button press reporting to backend
+                    latest_state_.press_nonce = ++press_count_;
+                    
                     last_strain_pressed_played_ = VIRTUAL_BUTTON_SHORT_PRESSED;
                 }
                 /* code */
@@ -635,6 +639,10 @@ void RootTask::updateHardware(AppState *app_state)
                     LOGD("Handling long press");
 
                     motor_task_.playHaptic(true, true);
+                    
+                    // Increment press nonce for button press reporting to backend
+                    latest_state_.press_nonce = ++press_count_;
+                    
                     last_strain_pressed_played_ = VIRTUAL_BUTTON_LONG_PRESSED;
                     NavigationEvent event = NavigationEvent::LONG;
 

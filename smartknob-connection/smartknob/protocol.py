@@ -466,6 +466,38 @@ class SmartKnobProtocol:
     
     # Public API methods
     
+    async def flush_receive_buffer(self):
+        """
+        Attempt to flush receive buffer by sending garbage terminator.
+        
+        Theory: Send 0x00 to force PacketSerial to process corrupted buffer,
+        fail COBS decode, discard it, and reset to clean state.
+        
+        Returns:
+            True if flush was sent successfully, False otherwise
+        """
+        if not self.serial or not self.serial.is_open:
+            logger.warning("Cannot flush buffer - serial not open")
+            return False
+        
+        try:
+            logger.info("Flushing receive buffer with single terminator (0x00)")
+            
+            # Send a lone 0x00 byte (COBS frame terminator)
+            # This should force PacketSerial to process corrupted buffer and discard it
+            self.serial.write(b'\x00')
+            self.serial.flush()
+            
+            # Wait briefly for firmware to process
+            await anyio.sleep(0.05)
+            
+            logger.info("Buffer flush sent")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Buffer flush failed: {e}")
+            return False
+    
     async def send_command(self, command: int) -> int:
         """Send SmartKnob command.
 
@@ -701,6 +733,15 @@ class SmartKnobConnection:
         self.protocol = None
         self.connected = False
         
+        # App event callbacks
+        self._cb_value_selected: Optional[Callable[[int, float], None]] = None
+        self._cb_button_pressed: Optional[Callable[[int], None]] = None
+        self._last_position: Optional[int] = None
+        self._last_press_nonce: int = -1
+        
+        # User's message callback (to be wrapped)
+        self._user_message_callback: Optional[Callable] = None
+        
     async def start(self, switch_to_protobuf: bool = True):
         """
         Start the connection.
@@ -735,14 +776,118 @@ class SmartKnobConnection:
         logger.info("SmartKnobConnection stopped")
     
     def set_message_callback(self, callback: Callable):
-        """Set callback for received messages."""
+        """
+        Set callback for received messages.
+        
+        The callback is automatically wrapped to process app events (value changes, button presses)
+        before calling the user's callback.
+        """
         if self.protocol:
-            self.protocol.on_message = callback
+            # Store user callback
+            self._user_message_callback = callback
+            
+            # Create wrapper that processes app events first
+            def wrapped_callback(message):
+                # Process app events first
+                msg_type = message.WhichOneof("payload")
+                if msg_type == "smartknob_state":
+                    self._handle_smartknob_state(message.smartknob_state)
+                
+                # Then call user callback if provided
+                if self._user_message_callback:
+                    self._user_message_callback(message)
+            
+            self.protocol.on_message = wrapped_callback
     
     def set_raw_data_callback(self, callback: Callable):
         """Set callback for raw serial data (for debugging/logging)."""
         if self.protocol:
             self.protocol.on_raw_data = callback
+    
+    async def flush_receive_buffer(self):
+        """
+        Flush receive buffer before sending next command.
+        
+        Sends a single 0x00 terminator to force PacketSerial to process
+        and discard any corrupted data in the buffer.
+        
+        Returns:
+            True if flush was successful, False otherwise
+        """
+        if self.protocol:
+            return await self.protocol.flush_receive_buffer()
+        return False
+    
+    def on_value_selected(self, callback: Callable[[int, float], None]) -> "SmartKnobConnection":
+        """
+        Register callback for knob position changes.
+        
+        The callback is invoked whenever the knob position changes, providing
+        the current position and sub-position for fine-grained tracking.
+        
+        Args:
+            callback: Function(position: int, sub_position: float) called when value changes
+        
+        Returns:
+            Self for method chaining
+        
+        Example:
+            conn.on_value_selected(lambda pos, sub: print(f"Position: {pos}, sub: {sub:.3f}"))
+        """
+        self._cb_value_selected = callback
+        return self
+    
+    def on_button_pressed(self, callback: Callable[[int], None]) -> "SmartKnobConnection":
+        """
+        Register callback for button presses.
+        
+        The callback is invoked whenever the knob is pressed, providing the
+        position at which the press occurred.
+        
+        Args:
+            callback: Function(position: int) called when button is pressed
+        
+        Returns:
+            Self for method chaining
+        
+        Example:
+            conn.on_button_pressed(lambda pos: print(f"Button pressed at: {pos}"))
+        """
+        self._cb_button_pressed = callback
+        return self
+    
+    def _handle_smartknob_state(self, state):
+        """
+        Internal handler for smartknob_state messages.
+        
+        Processes state changes and triggers registered callbacks for:
+        - Value changes (position changed)
+        - Button presses (press_nonce changed)
+        """
+        try:
+            # Extract position
+            current_position = int(getattr(state, "current_position", 0))
+            sub_position = float(getattr(state, "sub_position_unit", 0.0))
+            
+            # Value selected event (position changed)
+            if self._cb_value_selected and (self._last_position is None or current_position != self._last_position):
+                self._last_position = current_position
+                try:
+                    self._cb_value_selected(current_position, sub_position)
+                except Exception as e:
+                    logger.warning(f"Error in value_selected callback: {e}")
+            
+            # Button pressed event (press_nonce changed)
+            press_nonce = int(getattr(state, "press_nonce", -1))
+            if self._cb_button_pressed and press_nonce >= 0 and press_nonce != self._last_press_nonce:
+                self._last_press_nonce = press_nonce
+                try:
+                    self._cb_button_pressed(current_position)
+                except Exception as e:
+                    logger.warning(f"Error in button_pressed callback: {e}")
+                    
+        except Exception as e:
+            logger.warning(f"Error handling smartknob_state: {e}")
     
     def ResetAtClose(self, enable: bool):
         """
@@ -807,8 +952,26 @@ class SmartKnobConnection:
         else:
             raise RuntimeError("Not connected")
     
-    async def send_app_select(self, *, by_id: Optional[int] = None, by_app_id: Optional[str] = None):
-        """Select app by id or app_id."""
+    async def send_app_select(self, *, by_id: Optional[int] = None, by_app_id: Optional[str] = None, flush_before: bool = True):
+        """
+        Select app by id or app_id with optional buffer flush.
+        
+        Args:
+            by_id: Select app by numeric ID (0-255)
+            by_app_id: Select app by string identifier (max 32 chars)
+            flush_before: Send 0x00 terminator first to clear buffer corruption (default: True)
+                         This works around a known buffer corruption issue during connection init.
+                         
+        Returns:
+            Nonce of the sent message
+            
+        Note:
+            The flush_before workaround adds ~50ms overhead but ensures reliable packet delivery.
+            This is a temporary solution until the root cause of buffer corruption is fixed.
+        """
+        if flush_before:
+            await self.flush_receive_buffer()
+        
         if self.protocol:
             return await self.protocol.send_app_select(by_id=by_id, by_app_id=by_app_id)
         else:
