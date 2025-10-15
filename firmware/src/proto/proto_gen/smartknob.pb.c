@@ -39,6 +39,9 @@ PB_BIND(PB_RequestState, PB_RequestState, AUTO)
 PB_BIND(PB_AppSelect, PB_AppSelect, AUTO)
 
 
+PB_BIND(PB_NavigationConfig, PB_NavigationConfig, AUTO)
+
+
 PB_BIND(PB_PersistentConfiguration, PB_PersistentConfiguration, AUTO)
 
 

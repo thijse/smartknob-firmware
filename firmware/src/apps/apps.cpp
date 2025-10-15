@@ -1,4 +1,4 @@
-#include "apps.h" 
+#include "apps.h"  
 
 Apps::Apps(SemaphoreHandle_t mutex) : screen_mutex_(mutex)
 {
@@ -118,6 +118,12 @@ App *Apps::loadApp(uint8_t position, std::string app_slug, char *app_id, char *f
     {
         StopwatchApp *app = new StopwatchApp(screen_mutex_, entity_id);
         // sprintf(app->friendly_name, "%s", friendly_name);
+        add(position, app);
+        return app;
+    }
+    else if (app_slug.compare(APP_SLUG_ANGLE_SELECTOR) == 0)
+    {
+        AngleSelectorApp *app = new AngleSelectorApp(screen_mutex_, app_id, friendly_name, entity_id);
         add(position, app);
         return app;
     }

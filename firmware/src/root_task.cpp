@@ -160,6 +160,17 @@ void RootTask::run()
                                                            break;
                                                        } });
 
+    // Runtime navigation configuration handler (not persisted)
+    serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_navigation_config_tag, [this](const PB_ToSmartknob &to_smartknob)
+                                                   {
+                                                       const PB_NavigationConfig &config = to_smartknob.payload.navigation_config;
+                                                       
+                                                       LOGI("Received navigation config: long_press_menu_enabled=%d", config.long_press_menu_enabled);
+                                                       
+                                                       // Update runtime variable (not persisted to configuration)
+                                                       long_press_menu_enabled_ = config.long_press_menu_enabled;
+                                                   });
+
     // Component system protocol handler
     serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_app_component_tag, [this](const PB_ToSmartknob &to_smartknob)
                                                    {
@@ -646,17 +657,27 @@ void RootTask::updateHardware(AppState *app_state)
                     last_strain_pressed_played_ = VIRTUAL_BUTTON_LONG_PRESSED;
                     NavigationEvent event = NavigationEvent::LONG;
 
-                    //! GET ACTIVE FLOW? SO WE DONT HAVE DIFFERENT
-                    // display_task_->getActiveFlow()->handleNavigationEvent(event);
-                    switch (display_task_->getErrorHandlingFlow()->getErrorType())
+                    // Check runtime navigation configuration (not persisted)
+                    LOGI("Long press: long_press_menu_enabled=%d", long_press_menu_enabled_);
+                    if (long_press_menu_enabled_)
                     {
-                    case NO_ERROR:
-                        // With simplified OSMode, always handle navigation
-                        display_task_->getApps()->handleNavigationEvent(event);
-                        break;
-                    // Network error handling removed for serial-only mode
-                    default:
-                        break;
+                        LOGI("Long press - navigating to menu");
+                        //! GET ACTIVE FLOW? SO WE DONT HAVE DIFFERENT
+                        // display_task_->getActiveFlow()->handleNavigationEvent(event);
+                        switch (display_task_->getErrorHandlingFlow()->getErrorType())
+                        {
+                        case NO_ERROR:
+                            // With simplified OSMode, always handle navigation
+                            display_task_->getApps()->handleNavigationEvent(event);
+                            break;
+                        // Network error handling removed for serial-only mode
+                        default:
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        LOGI("Long press - menu navigation disabled, staying in current app");
                     }
                 }
                 break;

@@ -991,6 +991,33 @@ class SmartKnobConnection:
         else:
             raise RuntimeError("Not connected")
     
+    async def set_long_press_menu_enabled(self, enabled: bool, flush_before: bool = True):
+        """
+        Enable or disable long-press menu navigation (runtime only, not persisted).
+        
+        Args:
+            enabled: If True, long press returns to menu. If False, long press stays in current app.
+            flush_before: If True, flush receive buffer before sending for robustness (default: True)
+        
+        Example:
+            # Disable menu navigation
+            await conn.set_long_press_menu_enabled(False)
+            
+            # Re-enable menu navigation
+            await conn.set_long_press_menu_enabled(True)
+        """
+        if not self.protocol:
+            raise RuntimeError("Not connected")
+        
+        if flush_before:
+            await self.flush_receive_buffer()
+        
+        msg = smartknob_pb2.ToSmartknob()
+        msg.navigation_config.long_press_menu_enabled = enabled
+        await self.protocol._send_frame_immediate(msg)
+        
+        logger.info(f"Set long_press_menu_enabled to {enabled} (runtime only, not persisted)")
+    
     def get_stats(self) -> Dict[str, int]:
         """Get protocol statistics."""
         if self.protocol:

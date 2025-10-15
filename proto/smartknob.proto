@@ -35,6 +35,7 @@ message FromSmartKnob {
         SETTINGS.Settings settings = 7;
         AppComponent app_component = 8;
         AppSelect app_select = 9;
+        NavigationConfig navigation_config = 10;
     }
  }
 
@@ -257,6 +258,19 @@ message AppSelect {
         // Alternative: select by string app_id (e.g., "light_dimmer").
         string by_app_id = 2 [(nanopb).max_length = 32];
     }
+}
+
+/**
+ * Runtime navigation configuration (not persisted).
+ * Controls navigation behavior without affecting saved settings.
+ */
+message NavigationConfig {
+    /**
+     * Enable or disable long-press navigation to main menu.
+     * When true (default): Long press returns to menu.
+     * When false: Long press is ignored, stays in current app.
+     */
+    bool long_press_menu_enabled = 1;
 }
 
 message PersistentConfiguration {

@@ -113,6 +113,9 @@ private:
     ComponentManager *component_manager_;
     bool component_mode_; // true when using components, false when using traditional apps
 
+    // Runtime navigation configuration (not persisted)
+    bool long_press_menu_enabled_ = true; // Default: enabled
+
     uint32_t last_calib_state_sent_ = 0;
 
     // Deferred confirmation after app_select:

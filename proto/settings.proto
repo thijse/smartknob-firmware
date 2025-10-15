@@ -34,8 +34,6 @@ message LedRing {
     Beacon beacon = 7;
 }
 
-
-
 // message Motor {
 // }
 

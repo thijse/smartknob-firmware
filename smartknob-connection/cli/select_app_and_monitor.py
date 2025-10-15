@@ -9,6 +9,10 @@ Usage:
   python .\\cli\\select_app_and_monitor.py --id 1
   python .\\cli\\select_app_and_monitor.py --app-id climate
   python .\\cli\\select_app_and_monitor.py --id 1 --duration 60
+  
+  # With long-press menu navigation control
+  python .\\cli\\select_app_and_monitor.py --id 1 --disable-long-press-menu
+  python .\\cli\\select_app_and_monitor.py --id 1 --enable-long-press-menu
 """
 
 import os
@@ -36,6 +40,12 @@ def parse_args() -> argparse.Namespace:
                        help="Monitor duration in seconds (default: 30)")
     parser.add_argument("--timeout", type=float, default=3.0,
                        help="Timeout in seconds to wait for confirmation (default: 3.0)")
+    
+    # Long-press menu navigation toggle
+    parser.add_argument("--disable-long-press-menu", action="store_true",
+                       help="Disable long-press navigation to menu (runtime only)")
+    parser.add_argument("--enable-long-press-menu", action="store_true",
+                       help="Enable long-press navigation to menu (default behavior)")
     
     return parser.parse_args()
 
@@ -105,6 +115,14 @@ async def main():
             position = getattr(st, "current_position", 0)
             print(f"✅ App selected: '{app_id}' at position={position}")
             
+            # Set long-press menu navigation if requested
+            if args.disable_long_press_menu:
+                await conn.set_long_press_menu_enabled(False)
+                print("🔒 Long-press menu navigation disabled (stays in current app)")
+            elif args.enable_long_press_menu:
+                await conn.set_long_press_menu_enabled(True)
+                print("🔓 Long-press menu navigation enabled (returns to menu)")
+            
             # Monitor for interactions
             print(f"\n👂 Monitoring for {args.duration:.1f}s...")
             print("   Turn the knob or press the button")
@@ -113,8 +131,23 @@ async def main():
             await anyio.sleep(args.duration)
             
             print(f"\n⏱️ Monitoring complete")
+            
+            # Restore default long-press menu behavior before exiting
+            if args.disable_long_press_menu:
+                await conn.set_long_press_menu_enabled(True)
+                print("🔓 Long-press menu navigation restored to default (enabled)")
+            
             tg.cancel_scope.cancel()
             
+    except KeyboardInterrupt:
+        # Restore default behavior on early exit
+        if args.disable_long_press_menu:
+            try:
+                await conn.set_long_press_menu_enabled(True)
+                print("\n🔓 Long-press menu navigation restored to default (enabled)")
+            except:
+                pass
+        raise
     except BaseException:
         pass
     finally:

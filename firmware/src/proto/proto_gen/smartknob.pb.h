@@ -208,6 +208,17 @@ typedef struct _PB_AppSelect {
     } selector;
 } PB_AppSelect;
 
+/* *
+ Runtime navigation configuration (not persisted).
+ Controls navigation behavior without affecting saved settings. */
+typedef struct _PB_NavigationConfig {
+    /* *
+ Enable or disable long-press navigation to main menu.
+ When true (default): Long press returns to menu.
+ When false: Long press is ignored, stays in current app. */
+    bool long_press_menu_enabled;
+} PB_NavigationConfig;
+
 typedef struct _PB_MotorCalibration {
     bool calibrated;
     float zero_electrical_offset;
@@ -322,6 +333,7 @@ typedef struct _PB_ToSmartknob {
         SETTINGS_Settings settings;
         PB_AppComponent app_component;
         PB_AppSelect app_select;
+        PB_NavigationConfig navigation_config;
     } payload;
 } PB_ToSmartknob;
 
@@ -360,6 +372,7 @@ extern "C" {
 
 
 
+
 #define PB_AppComponent_type_ENUMTYPE PB_ComponentType
 
 
@@ -377,6 +390,7 @@ extern "C" {
 #define PB_SmartKnobConfig_init_default          {0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, {0, 0, 0, 0, 0}, 0, 0}
 #define PB_RequestState_init_default             {0}
 #define PB_AppSelect_init_default                {0, {0}}
+#define PB_NavigationConfig_init_default         {0}
 #define PB_PersistentConfiguration_init_default  {0, false, PB_MotorCalibration_init_default, 0}
 #define PB_MotorCalibration_init_default         {0, 0, 0, 0}
 #define PB_StrainState_init_default              {0, 0}
@@ -395,6 +409,7 @@ extern "C" {
 #define PB_SmartKnobConfig_init_zero             {0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, {0, 0, 0, 0, 0}, 0, 0}
 #define PB_RequestState_init_zero                {0}
 #define PB_AppSelect_init_zero                   {0, {0}}
+#define PB_NavigationConfig_init_zero            {0}
 #define PB_PersistentConfiguration_init_zero     {0, false, PB_MotorCalibration_init_zero, 0}
 #define PB_MotorCalibration_init_zero            {0, 0, 0, 0}
 #define PB_StrainState_init_zero                 {0, 0}
@@ -431,6 +446,7 @@ extern "C" {
 #define PB_SmartKnobState_press_nonce_tag        4
 #define PB_AppSelect_by_id_tag                   1
 #define PB_AppSelect_by_app_id_tag               2
+#define PB_NavigationConfig_long_press_menu_enabled_tag 1
 #define PB_MotorCalibration_calibrated_tag       1
 #define PB_MotorCalibration_zero_electrical_offset_tag 2
 #define PB_MotorCalibration_direction_cw_tag     3
@@ -481,6 +497,7 @@ extern "C" {
 #define PB_ToSmartknob_settings_tag              7
 #define PB_ToSmartknob_app_component_tag         8
 #define PB_ToSmartknob_app_select_tag            9
+#define PB_ToSmartknob_navigation_config_tag     10
 
 /* Struct field encoding specification for nanopb */
 #define PB_FromSmartKnob_FIELDLIST(X, a) \
@@ -509,7 +526,8 @@ X(a, STATIC,   ONEOF,    UENUM,    (payload,smartknob_command,payload.smartknob_
 X(a, STATIC,   ONEOF,    MESSAGE,  (payload,strain_calibration,payload.strain_calibration),   6) \
 X(a, STATIC,   ONEOF,    MESSAGE,  (payload,settings,payload.settings),   7) \
 X(a, STATIC,   ONEOF,    MESSAGE,  (payload,app_component,payload.app_component),   8) \
-X(a, STATIC,   ONEOF,    MESSAGE,  (payload,app_select,payload.app_select),   9)
+X(a, STATIC,   ONEOF,    MESSAGE,  (payload,app_select,payload.app_select),   9) \
+X(a, STATIC,   ONEOF,    MESSAGE,  (payload,navigation_config,payload.navigation_config),  10)
 #define PB_ToSmartknob_CALLBACK NULL
 #define PB_ToSmartknob_DEFAULT NULL
 #define PB_ToSmartknob_payload_request_state_MSGTYPE PB_RequestState
@@ -518,6 +536,7 @@ X(a, STATIC,   ONEOF,    MESSAGE,  (payload,app_select,payload.app_select),   9)
 #define PB_ToSmartknob_payload_settings_MSGTYPE SETTINGS_Settings
 #define PB_ToSmartknob_payload_app_component_MSGTYPE PB_AppComponent
 #define PB_ToSmartknob_payload_app_select_MSGTYPE PB_AppSelect
+#define PB_ToSmartknob_payload_navigation_config_MSGTYPE PB_NavigationConfig
 
 #define PB_Knob_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, STRING,   mac_address,       1) \
@@ -589,6 +608,11 @@ X(a, STATIC,   ONEOF,    UINT32,   (selector,by_id,selector.by_id),   1) \
 X(a, STATIC,   ONEOF,    STRING,   (selector,by_app_id,selector.by_app_id),   2)
 #define PB_AppSelect_CALLBACK NULL
 #define PB_AppSelect_DEFAULT NULL
+
+#define PB_NavigationConfig_FIELDLIST(X, a) \
+X(a, STATIC,   SINGULAR, BOOL,     long_press_menu_enabled,   1)
+#define PB_NavigationConfig_CALLBACK NULL
+#define PB_NavigationConfig_DEFAULT NULL
 
 #define PB_PersistentConfiguration_FIELDLIST(X, a) \
 X(a, STATIC,   SINGULAR, UINT32,   version,           1) \
@@ -662,6 +686,7 @@ extern const pb_msgdesc_t PB_SmartKnobState_msg;
 extern const pb_msgdesc_t PB_SmartKnobConfig_msg;
 extern const pb_msgdesc_t PB_RequestState_msg;
 extern const pb_msgdesc_t PB_AppSelect_msg;
+extern const pb_msgdesc_t PB_NavigationConfig_msg;
 extern const pb_msgdesc_t PB_PersistentConfiguration_msg;
 extern const pb_msgdesc_t PB_MotorCalibration_msg;
 extern const pb_msgdesc_t PB_StrainState_msg;
@@ -682,6 +707,7 @@ extern const pb_msgdesc_t PB_MultiChoiceConfig_msg;
 #define PB_SmartKnobConfig_fields &PB_SmartKnobConfig_msg
 #define PB_RequestState_fields &PB_RequestState_msg
 #define PB_AppSelect_fields &PB_AppSelect_msg
+#define PB_NavigationConfig_fields &PB_NavigationConfig_msg
 #define PB_PersistentConfiguration_fields &PB_PersistentConfiguration_msg
 #define PB_MotorCalibration_fields &PB_MotorCalibration_msg
 #define PB_StrainState_fields &PB_StrainState_msg
@@ -700,6 +726,7 @@ extern const pb_msgdesc_t PB_MultiChoiceConfig_msg;
 #define PB_MotorCalibState_size                  2
 #define PB_MotorCalibration_size                 15
 #define PB_MultiChoiceConfig_size                580
+#define PB_NavigationConfig_size                 2
 #define PB_PersistentConfiguration_size          28
 #define PB_RequestState_size                     0
 #define PB_SMARTKNOB_PB_H_MAX_SIZE               PB_ToSmartknob_size

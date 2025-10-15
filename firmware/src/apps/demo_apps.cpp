@@ -12,6 +12,7 @@ CustomApps::CustomApps(SemaphoreHandle_t mutex) : Apps(mutex)
     loadApp(app_position++, "stopwatch", "light.ceiling1", "Ceiling1", "stopwatch");
     loadApp(app_position++, "switch", "light.ceiling", "Ceiling", "ceiling_light_entity_id");
     loadApp(app_position++, "light_dimmer", "light.workbench", "Workbench", "workbench_light_entity_id");
+    loadApp(app_position++, "angle_selector", "carm.angle_selector", "C-Arm Presets", "angle_selector_entity");
 
     // Add settings app
     SettingsApp *settings_app = new SettingsApp(screen_mutex_);
