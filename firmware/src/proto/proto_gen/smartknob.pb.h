@@ -192,6 +192,8 @@ typedef struct _PB_SmartKnobState {
  that a press has taken place at some point even if the State was lost during the press
  itself. Is this overkill? Probably, let's revisit in future protocol versions. */
     uint8_t press_nonce;
+    /* * Distance measured by proximity sensor in millimeters (raw VL53L0X reading, 0-4000mm typical). */
+    uint16_t proximity_mm;
 } PB_SmartKnobState;
 
 typedef struct _PB_RequestState {
@@ -386,7 +388,7 @@ extern "C" {
 #define PB_StrainCalibState_init_default         {0, 0}
 #define PB_Ack_init_default                      {0}
 #define PB_Log_init_default                      {"", _PB_LogLevel_MIN, "", 0}
-#define PB_SmartKnobState_init_default           {0, 0, false, PB_SmartKnobConfig_init_default, 0}
+#define PB_SmartKnobState_init_default           {0, 0, false, PB_SmartKnobConfig_init_default, 0, 0}
 #define PB_SmartKnobConfig_init_default          {0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, {0, 0, 0, 0, 0}, 0, 0}
 #define PB_RequestState_init_default             {0}
 #define PB_AppSelect_init_default                {0, {0}}
@@ -405,7 +407,7 @@ extern "C" {
 #define PB_StrainCalibState_init_zero            {0, 0}
 #define PB_Ack_init_zero                         {0}
 #define PB_Log_init_zero                         {"", _PB_LogLevel_MIN, "", 0}
-#define PB_SmartKnobState_init_zero              {0, 0, false, PB_SmartKnobConfig_init_zero, 0}
+#define PB_SmartKnobState_init_zero              {0, 0, false, PB_SmartKnobConfig_init_zero, 0, 0}
 #define PB_SmartKnobConfig_init_zero             {0, 0, 0, 0, 0, 0, 0, 0, 0, "", 0, {0, 0, 0, 0, 0}, 0, 0}
 #define PB_RequestState_init_zero                {0}
 #define PB_AppSelect_init_zero                   {0, {0}}
@@ -444,6 +446,7 @@ extern "C" {
 #define PB_SmartKnobState_sub_position_unit_tag  2
 #define PB_SmartKnobState_config_tag             3
 #define PB_SmartKnobState_press_nonce_tag        4
+#define PB_SmartKnobState_proximity_mm_tag       5
 #define PB_AppSelect_by_id_tag                   1
 #define PB_AppSelect_by_app_id_tag               2
 #define PB_NavigationConfig_long_press_menu_enabled_tag 1
@@ -576,7 +579,8 @@ X(a, STATIC,   SINGULAR, BOOL,     isVerbose,         4)
 X(a, STATIC,   SINGULAR, INT32,    current_position,   1) \
 X(a, STATIC,   SINGULAR, FLOAT,    sub_position_unit,   2) \
 X(a, STATIC,   OPTIONAL, MESSAGE,  config,            3) \
-X(a, STATIC,   SINGULAR, UINT32,   press_nonce,       4)
+X(a, STATIC,   SINGULAR, UINT32,   press_nonce,       4) \
+X(a, STATIC,   SINGULAR, UINT32,   proximity_mm,      5)
 #define PB_SmartKnobState_CALLBACK NULL
 #define PB_SmartKnobState_DEFAULT NULL
 #define PB_SmartKnobState_config_MSGTYPE PB_SmartKnobConfig
@@ -731,7 +735,7 @@ extern const pb_msgdesc_t PB_MultiChoiceConfig_msg;
 #define PB_RequestState_size                     0
 #define PB_SMARTKNOB_PB_H_MAX_SIZE               PB_ToSmartknob_size
 #define PB_SmartKnobConfig_size                  198
-#define PB_SmartKnobState_size                   220
+#define PB_SmartKnobState_size                   224
 #define PB_StrainCalibState_size                 11
 #define PB_StrainCalibration_size                5
 #define PB_StrainState_size                      16

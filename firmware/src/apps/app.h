@@ -21,6 +21,7 @@ const char APP_SLUG_LIGHT_SWITCH[48] = "light_switch";
 const char APP_SLUG_SWITCH[48] = "switch";
 const char APP_SLUG_STOPWATCH[48] = "stopwatch";
 const char APP_SLUG_ANGLE_SELECTOR[48] = "angle_selector";
+const char APP_SLUG_LOGO[48] = "logo";
 
 enum SharedAppIds : int8_t
 {

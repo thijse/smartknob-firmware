@@ -1,4 +1,4 @@
-#include "root_task.h" 
+#include "root_task.h"
 #include "app_config.h"
 #include "semaphore_guard.h"
 #include "util.h"
@@ -168,8 +168,7 @@ void RootTask::run()
                                                        LOGI("Received navigation config: long_press_menu_enabled=%d", config.long_press_menu_enabled);
                                                        
                                                        // Update runtime variable (not persisted to configuration)
-                                                       long_press_menu_enabled_ = config.long_press_menu_enabled;
-                                                   });
+                                                       long_press_menu_enabled_ = config.long_press_menu_enabled; });
 
     // Component system protocol handler
     serial_protocol_protobuf_->registerTagCallback(PB_ToSmartknob_app_component_tag, [this](const PB_ToSmartknob &to_smartknob)
@@ -369,10 +368,16 @@ void RootTask::run()
             app_state.proximiti_state.RangeMilliMeter = latest_sensors_state_.proximity.RangeMilliMeter;
             app_state.proximiti_state.RangeStatus = latest_sensors_state_.proximity.RangeStatus;
 
+            // Update proximity in the state that will be sent to backend (NEW - simple!)
+            latest_state_.proximity_mm = latest_sensors_state_.proximity.RangeMilliMeter;
+
             // wake up the screen
             // RangeStatus is usually 0,2,4. We want to caputure the level of confidence 0 and 2.
             // Add motor encoder detection? or disable motor if not "enaged detected presence"
-            if (app_state.proximiti_state.RangeStatus < 3 && app_state.proximiti_state.RangeMilliMeter < 200)
+            bool hand_detected = (app_state.proximiti_state.RangeStatus < 3 &&
+                                  app_state.proximiti_state.RangeMilliMeter < 200);
+
+            if (hand_detected)
             {
                 app_state.screen_state.has_been_engaged = true;
                 if (app_state.screen_state.awake_until < millis() + KNOB_ENGAGED_TIMEOUT_NONE_PHYSICAL) // If half of the time of the last interaction has passed, reset allow for engage to be detected again.
@@ -382,6 +387,15 @@ void RootTask::run()
             }
         }
 
+        // Simple periodic broadcasting (includes proximity data)
+        static uint32_t last_periodic_broadcast = 0;
+        uint32_t now = millis();
+        if (now - last_periodic_broadcast >= 500)
+        { // Every 500ms (2Hz) as requested
+            sendCurrentKnobState();
+            last_periodic_broadcast = now;
+        }
+
         // Network connectivity removed for serial-only mode
 
         if (xQueueReceive(app_sync_queue_, &apps_, 0) == pdTRUE)
@@ -389,8 +403,13 @@ void RootTask::run()
             // Does nothing currently. MQTT functionality removed for serial-only mode
         }
 
+        // Save proximity before knob_state_queue overwrites latest_state_
+        uint32_t saved_proximity_mm = latest_state_.proximity_mm;
+
         if (xQueueReceive(knob_state_queue_, &latest_state_, 0) == pdTRUE)
         {
+            // Restore proximity data (motor state doesn't include sensor data)
+            latest_state_.proximity_mm = saved_proximity_mm;
 
             // The following is a smoothing filter (rounding) on the sub position unit (to avoid flakiness).
             float roundedNewPosition = round(latest_state_.sub_position_unit * 3) / 3.0;
@@ -630,10 +649,10 @@ void RootTask::updateHardware(AppState *app_state)
 
                     LOGD("Handling short press");
                     motor_task_.playHaptic(true, false);
-                    
+
                     // Increment press nonce for button press reporting to backend
                     latest_state_.press_nonce = ++press_count_;
-                    
+
                     last_strain_pressed_played_ = VIRTUAL_BUTTON_SHORT_PRESSED;
                 }
                 /* code */
@@ -650,10 +669,10 @@ void RootTask::updateHardware(AppState *app_state)
                     LOGD("Handling long press");
 
                     motor_task_.playHaptic(true, true);
-                    
+
                     // Increment press nonce for button press reporting to backend
                     latest_state_.press_nonce = ++press_count_;
-                    
+
                     last_strain_pressed_played_ = VIRTUAL_BUTTON_LONG_PRESSED;
                     NavigationEvent event = NavigationEvent::LONG;
 
@@ -855,6 +874,10 @@ void RootTask::sendCurrentKnobState()
     // Use existing latest_state_ and apply current press_nonce
     PB_SmartKnobState state = latest_state_;
     state.press_nonce = press_count_;
+
+    // DEBUG: Log proximity value being sent
+    // disabled for now, since this means we basically send the state twice
+    // LOGI("Sending state: pos=%d, proximity=%u mm", state.current_position, state.proximity_mm);
 
     // Send via protocol
     if (serial_protocol_protobuf_)

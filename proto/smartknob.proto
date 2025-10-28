@@ -123,6 +123,9 @@ message SmartKnobState {
      */
     uint32 press_nonce = 4 [(nanopb).int_size = IS_8];
 
+    /** Distance measured by proximity sensor in millimeters (raw VL53L0X reading, 0-4000mm typical). */
+    uint32 proximity_mm = 5 [(nanopb).int_size = IS_16];
+
 }
 
 

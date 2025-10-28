@@ -56,7 +56,7 @@ AngleSelectorApp::AngleSelectorApp(SemaphoreHandle_t mutex, char *app_id_, char 
         .sub_position_unit = 0,
         .position_nonce = 0,
         .min_position = 0,
-        .max_position = -1, // unbounded / wrap
+        .max_position = PRESET_COUNT_ - 1, // unbounded / wrap
         .position_width_radians = 25 * PI / 180,
         .detent_strength_unit = 1,
         .endstop_strength_unit = 1,
@@ -177,19 +177,21 @@ EntityStateUpdate AngleSelectorApp::updateStateFromKnob(PB_SmartKnobState state)
 {
     EntityStateUpdate new_state;
 
-    // Track position for consistency; immediate emit on index change
+    // Track position for consistency
     int32_t pos = state.current_position;
-    // Use wrap for unbounded rotation
     uint8_t idx = wrapIndex_(pos, PRESET_COUNT_);
 
     // Keep motor_config in sync (optional, consistent with other apps)
     motor_config.position = pos;
     motor_config.sub_position_unit = state.sub_position_unit;
-    motor_config.position_nonce = state.current_position; // align with position steps
+    motor_config.position_nonce = state.current_position;
 
-    if (idx != last_index_)
+    // Check if index changed (for UI updates)
+    bool index_changed = (idx != last_index_);
+
+    if (index_changed)
     {
-        // Update labels
+        // Update UI when index changes
         {
             SemaphoreGuard lock(mutex_);
             updatePresetImage_(idx);
@@ -197,7 +199,16 @@ EntityStateUpdate AngleSelectorApp::updateStateFromKnob(PB_SmartKnobState state)
             updateSelectorVisual_(idx);
         }
 
-        // Build JSON state
+        // Track index change
+        last_index_ = idx;
+        current_index_ = idx;
+    }
+
+    // Only broadcast on index changes (periodic broadcasting handled by root_task)
+    if (index_changed)
+    {
+
+        // Build JSON state with proximity data included
         cJSON *json = cJSON_CreateObject();
         char preset_name[64];
         snprintf(preset_name, sizeof(preset_name) - 1, "%s / %s", PRESETS_[idx].primary, PRESETS_[idx].secondary);
@@ -205,6 +216,13 @@ EntityStateUpdate AngleSelectorApp::updateStateFromKnob(PB_SmartKnobState state)
         cJSON_AddNumberToObject(json, "lao_deg", PRESETS_[idx].lao_deg);
         cJSON_AddNumberToObject(json, "cranial_deg", PRESETS_[idx].cranial_deg);
         cJSON_AddNumberToObject(json, "index", idx);
+
+        // Include current position for fine-grained tracking
+        cJSON_AddNumberToObject(json, "position", pos);
+        cJSON_AddNumberToObject(json, "sub_position", state.sub_position_unit);
+
+        // Include proximity from the state parameter (will be sent via root_task periodic broadcasts)
+        cJSON_AddNumberToObject(json, "proximity_mm", state.proximity_mm);
 
         char *json_str = cJSON_PrintUnformatted(json);
         snprintf(new_state.state, sizeof(new_state.state) - 1, "%s", json_str ? json_str : "{}");
@@ -220,10 +238,6 @@ EntityStateUpdate AngleSelectorApp::updateStateFromKnob(PB_SmartKnobState state)
         snprintf(new_state.app_slug, sizeof(new_state.app_slug) - 1, "%s", APP_SLUG_ANGLE_SELECTOR);
 
         new_state.changed = true;
-
-        // Track index change
-        last_index_ = idx;
-        current_index_ = idx;
     }
 
     return new_state;

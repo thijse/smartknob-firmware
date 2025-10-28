@@ -14,6 +14,7 @@
 #include "apps/blinds/blinds.h"
 #include "apps/climate/climate.h"
 #include "apps/angle_selector/angle_selector.h"
+#include "apps/logo/logo.h"
 
 #include "app_menu.h"
 
