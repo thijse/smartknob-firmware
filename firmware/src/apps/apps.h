@@ -15,6 +15,7 @@
 #include "apps/climate/climate.h"
 #include "apps/angle_selector/angle_selector.h"
 #include "apps/logo/logo.h"
+#include "apps/multiple_choice/multiple_choice.h"
 
 #include "app_menu.h"
 
@@ -29,7 +30,7 @@ public:
 
     EntityStateUpdate update(AppState state);
     void render();
-    void setActive(int8_t id);
+    void setActive(uint8_t id); // Changed from int8_t to support 0-255 range
     void setActiveByAppId(char *app_id);
 
     App *loadApp(uint8_t position, std::string app_slug, char *app_id, char *friendly_name, char *entity_id);
@@ -54,7 +55,7 @@ protected:
     std::map<uint8_t, std::shared_ptr<App>> apps;
     std::shared_ptr<Menu> menu = nullptr;
 
-    int8_t active_id = 0;
+    uint8_t active_id = 0; // Changed from int8_t to support 0-255 range
 
     std::shared_ptr<App> active_app = nullptr;
 

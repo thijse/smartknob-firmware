@@ -22,6 +22,7 @@ const char APP_SLUG_SWITCH[48] = "switch";
 const char APP_SLUG_STOPWATCH[48] = "stopwatch";
 const char APP_SLUG_ANGLE_SELECTOR[48] = "angle_selector";
 const char APP_SLUG_LOGO[48] = "logo";
+const char APP_SLUG_MULTIPLE_CHOICE[48] = "multiple_choice";
 
 enum SharedAppIds : int8_t
 {
@@ -45,6 +46,10 @@ public:
 
     virtual void handleNavigation(NavigationEvent event) {
         // DO NOTHING BY DEFAULT
+    };
+
+    virtual void setSubIndex(uint8_t sub_index) {
+        // DO NOTHING BY DEFAULT - only MultipleChoiceApp overrides this
     };
 
     void setMotorNotifier(MotorNotifier *motor_notifier);

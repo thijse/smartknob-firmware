@@ -1,4 +1,4 @@
-#include "apps.h"  
+#include "apps.h"
 
 Apps::Apps(SemaphoreHandle_t mutex) : screen_mutex_(mutex)
 {
@@ -41,28 +41,50 @@ void Apps::render()
     active_app->render();
 };
 
-void Apps::setActive(int8_t id)
+void Apps::setActive(uint8_t id) // Changed from int8_t to uint8_t
 {
     SemaphoreGuard lock(app_mutex_);
-    if (id == MENU)
+
+    // Special case: MENU (which is -2 in int8_t, becomes 254 in uint8_t)
+    if (id == 254 || id == static_cast<uint8_t>(MENU))
     {
         active_app = menu;
-        active_id = MENU;
+        active_id = 254; // Store as uint8_t representation of MENU
         render();
         return;
     }
-    LOGV(LOG_LEVEL_DEBUG, "Set active %d", id);
-    active_id = id;
-    if (apps[active_id] == nullptr)
+
+    // Check for sub-index encoding: 100-199 maps to app with base_id and sub_index
+    uint8_t base_id = id;
+    uint8_t sub_index = 0;
+
+    if (id >= 100 && id < 200)
     {
-        // TODO: panic?
-        LOGW("Null pointer instead of app");
+        // Extract sub-index: 100-199 → app 7 (MultipleChoice), sub_index 0-99
+        base_id = 7; // MultipleChoice app position (hardcoded for now)
+        sub_index = id - 100;
+
+        LOGI("Sub-index detected: id=%d → base_id=%d, sub_index=%d", id, base_id, sub_index);
     }
-    else
+
+    LOGV(LOG_LEVEL_DEBUG, "Set active %d (base_id=%d, sub_index=%d)", id, base_id, sub_index);
+    active_id = id; // Store the original ID
+
+    if (apps[base_id] == nullptr)
     {
-        active_app = apps[active_id];
-        render();
+        LOGW("Null pointer instead of app at id %d", base_id);
+        return;
     }
+
+    active_app = apps[base_id];
+
+    // Pass sub-index to app if specified (uses virtual method, only MultipleChoiceApp overrides)
+    if (sub_index > 0 || (id >= 100 && id < 200)) // Include id=100 as sub_index=0
+    {
+        active_app->setSubIndex(sub_index);
+    }
+
+    render();
 }
 
 App *Apps::loadApp(uint8_t position, std::string app_slug, char *app_id, char *friendly_name, char *entity_id)
@@ -130,6 +152,12 @@ App *Apps::loadApp(uint8_t position, std::string app_slug, char *app_id, char *f
     else if (app_slug.compare(APP_SLUG_LOGO) == 0)
     {
         LogoApp *app = new LogoApp(screen_mutex_, app_id, friendly_name, entity_id);
+        add(position, app);
+        return app;
+    }
+    else if (app_slug.compare(APP_SLUG_MULTIPLE_CHOICE) == 0)
+    {
+        MultipleChoiceApp *app = new MultipleChoiceApp(screen_mutex_, app_id, friendly_name, entity_id);
         add(position, app);
         return app;
     }

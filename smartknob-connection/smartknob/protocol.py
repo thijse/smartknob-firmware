@@ -323,7 +323,8 @@ class SmartKnobProtocol:
                     logger.error(f"Read loop error: {e}")
                     break
                     
-        except anyio.CancelledError:
+        except BaseException:
+            # Catch cancellation (anyio uses BaseException for cancellation)
             logger.debug("Read loop cancelled")
             raise
         finally:
@@ -736,6 +737,7 @@ class SmartKnobConnection:
         # App event callbacks
         self._cb_value_selected: Optional[Callable[[int, float], None]] = None
         self._cb_button_pressed: Optional[Callable[[int], None]] = None
+        self._cb_proximity_changed: Optional[Callable[[int], None]] = None  # NEW: proximity callback
         self._last_position: Optional[int] = None
         self._last_press_nonce: int = -1
         
@@ -758,6 +760,9 @@ class SmartKnobConnection:
             await self.protocol.start(switch_to_protobuf)
             self.connected = True
             
+            # Set up automatic message handling for app events
+            self._setup_message_handler()
+            
             logger.info("SmartKnobConnection established")
             return True
             
@@ -765,6 +770,24 @@ class SmartKnobConnection:
             logger.error(f"Failed to connect: {e}")
             await self.stop()
             return False
+    
+    def _setup_message_handler(self):
+        """Set up the message handler to process app events automatically."""
+        if not self.protocol:
+            return
+        
+        # Create wrapper that processes app events
+        def wrapped_callback(message):
+            # Process app events (value changes, button presses, proximity)
+            msg_type = message.WhichOneof("payload")
+            if msg_type == "smartknob_state":
+                self._handle_smartknob_state(message.smartknob_state)
+            
+            # Then call user callback if provided
+            if self._user_message_callback:
+                self._user_message_callback(message)
+        
+        self.protocol.on_message = wrapped_callback
     
     async def stop(self):
         """Stop the connection."""
@@ -782,22 +805,11 @@ class SmartKnobConnection:
         The callback is automatically wrapped to process app events (value changes, button presses)
         before calling the user's callback.
         """
-        if self.protocol:
-            # Store user callback
-            self._user_message_callback = callback
-            
-            # Create wrapper that processes app events first
-            def wrapped_callback(message):
-                # Process app events first
-                msg_type = message.WhichOneof("payload")
-                if msg_type == "smartknob_state":
-                    self._handle_smartknob_state(message.smartknob_state)
-                
-                # Then call user callback if provided
-                if self._user_message_callback:
-                    self._user_message_callback(message)
-            
-            self.protocol.on_message = wrapped_callback
+        # Store user callback
+        self._user_message_callback = callback
+        
+        # Re-setup message handler with new user callback
+        self._setup_message_handler()
     
     def set_raw_data_callback(self, callback: Callable):
         """Set callback for raw serial data (for debugging/logging)."""
@@ -856,6 +868,26 @@ class SmartKnobConnection:
         self._cb_button_pressed = callback
         return self
     
+    def on_proximity_changed(self, callback: Callable[[int], None]) -> "SmartKnobConnection":
+        """
+        Register callback for proximity sensor distance updates.
+        
+        The callback receives raw distance measurements from the VL53L0X time-of-flight
+        sensor in millimeters. Useful for observing sensor behavior before implementing
+        filtering logic.
+        
+        Args:
+            callback: Function(distance_mm: int) - called with raw distance in millimeters
+        
+        Returns:
+            Self for method chaining
+        
+        Example:
+            conn.on_proximity_changed(lambda dist: print(f"Distance: {dist}mm"))
+        """
+        self._cb_proximity_changed = callback
+        return self
+    
     def _handle_smartknob_state(self, state):
         """
         Internal handler for smartknob_state messages.
@@ -863,6 +895,7 @@ class SmartKnobConnection:
         Processes state changes and triggers registered callbacks for:
         - Value changes (position changed)
         - Button presses (press_nonce changed)
+        - Proximity distance updates
         """
         try:
             # Extract position
@@ -885,6 +918,14 @@ class SmartKnobConnection:
                     self._cb_button_pressed(current_position)
                 except Exception as e:
                     logger.warning(f"Error in button_pressed callback: {e}")
+            
+            # Proximity update (NEW - simple distance only!)
+            if self._cb_proximity_changed and hasattr(state, 'proximity_mm'):
+                distance_mm = int(getattr(state, "proximity_mm", 0))
+                try:
+                    self._cb_proximity_changed(distance_mm)
+                except Exception as e:
+                    logger.warning(f"Error in proximity_changed callback: {e}")
                     
         except Exception as e:
             logger.warning(f"Error handling smartknob_state: {e}")

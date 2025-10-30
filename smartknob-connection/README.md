@@ -132,7 +132,7 @@ Transport           │ Serial communication
 4. Calculate CRC32 checksum
 5. Append CRC32 (little-endian)
 6. COBS encode
-7. Add frame delimiter (0x00)
+7. Add frame delimiter (0x00) — *Note: A temporary workaround sends an extra 0x00 to flush firmware's RX buffer; there may be an underlying buffer overflow or COBS decoding issue not yet fully understood.*
 8. Send over serial
 
 **Incoming (SmartKnob → Python):**

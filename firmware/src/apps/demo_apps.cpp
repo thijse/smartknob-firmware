@@ -14,6 +14,7 @@ CustomApps::CustomApps(SemaphoreHandle_t mutex) : Apps(mutex)
     loadApp(app_position++, "light_dimmer", "light.workbench", "Workbench", "workbench_light_entity_id");
     loadApp(app_position++, "angle_selector", "carm.angle_selector", "C-Arm Presets", "angle_selector_entity");
     loadApp(app_position++, "logo", "logo.display", "Logo Display", "logo_entity");
+    loadApp(app_position++, "multiple_choice", "selector.demo", "Multi Choice", "multichoice_entity");
 
     // Add settings app
     SettingsApp *settings_app = new SettingsApp(screen_mutex_);

@@ -120,7 +120,7 @@ void RootTask::run()
                                                            uint8_t id = (uint8_t)sel.selector.by_id;
                                                            LOGI("AppSelect: by_id=%u", (unsigned)id);
 
-                                                           apps->setActive((int8_t)id);
+                                                           apps->setActive(id);
 
                                                            // Schedule a single deferred confirmation on next loop tick.
                                                            // For by_id we don't have the string app_id here; send once unconditionally.
